@@ -244,7 +244,7 @@ npm run lint
 2. Implement API endpoints for income entries and categories
 3. Create frontend components for the 5-step delivery entry workflow
 4. Implement dashboard and filtering views
-5. Add data migration service for CSV/Google Sheets import
+5. ~~Add data migration service for CSV/Google Sheets import~~
 6. Set up AWS infrastructure for deployment
 
 ## License
