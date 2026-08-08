@@ -1,6 +1,6 @@
 # HalalOrNot Income Tracking System
 
-A cloud-based web application for tracking and categorizing delivery income with automatic halal/non-halal segregation.
+A cloud-based (pending) web application for tracking and categorizing delivery income with automatic halal/non-halal segregation.
 
 ## Project Structure
 
