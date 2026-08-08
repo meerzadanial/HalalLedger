@@ -1,0 +1,77 @@
+// Prisma Schema for HalalOrNot Delivery Entry Tracking System
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String          @id @default(uuid())
+  email           String          @unique
+  passwordHash    String          @map("password_hash")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  
+  deliveryEntries DeliveryEntry[]
+  sessions        SessionToken[]
+  auditLogs       AuditLog[]
+  
+  @@map("users")
+}
+
+model SessionToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  tokenHash String   @unique @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("session_tokens")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?  @map("user_id")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  changes    Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+  
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model DeliveryEntry {
+  id               String   @id @default(uuid())
+  userId           String   @map("user_id")
+  restaurantName   String   @map("restaurant_name")
+  restaurantStatus String   @map("restaurant_status")
+  fareAmount       Decimal  @map("fare_amount") @db.Decimal(12, 2)
+  hasCashOrder     Boolean  @map("has_cash_order")
+  cashAmount       Decimal? @map("cash_amount") @db.Decimal(12, 2)
+  entryDate        DateTime @map("entry_date") @db.Date
+  timestamp        DateTime @default(now())
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([entryDate])
+  @@index([restaurantStatus])
+  @@index([createdAt])
+  @@index([userId, entryDate, restaurantName, fareAmount])
+  @@map("delivery_entries")
+}

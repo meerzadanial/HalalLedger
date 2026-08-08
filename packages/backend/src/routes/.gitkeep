@@ -1,0 +1,6 @@
+# API routes will be implemented here
+# - /api/auth/*
+# - /api/income-entries/*
+# - /api/categories/*
+# - /api/analytics/*
+# - /api/migration/*

@@ -1,0 +1,4 @@
+# Middleware will be implemented here
+# - Authentication middleware
+# - Error handling middleware
+# - Validation middleware

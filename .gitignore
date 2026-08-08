@@ -1,0 +1,72 @@
+# Dependencies
+node_modules/
+/.pnp
+.pnp.js
+
+# Testing
+coverage/
+*.lcov
+
+# Production
+dist/
+build/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# OS
+.DS_Store
+*.swp
+*.swo
+*~
+
+# IDEs
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Misc
+.cache/
+*.tsbuildinfo
+.eslintcache
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# AWS
+.aws-sam/
+samconfig.toml
+
+# Secrets / credentials (dev-session docs embedding test login credentials)
+LOGIN_CREDENTIALS.md
+*credentials*.md
+QUICK_START.md
+SYSTEM_STATUS.md
+TROUBLESHOOTING.md
+PRISMA_STUDIO_GUIDE.md
+*.pem
+*.key
+
+# Stale/redundant dev-session status docs (not secret, just unused clutter)
+PROJECT_STATUS_FINAL.md
+SETUP-VERIFICATION.md
+TASK_*_COMPLETION.md
+TASK_*_IMPLEMENTATION_SUMMARY.md
+*_COMPLETION.md
+*_SUMMARY.md
+MOBILE_FIX_*.md

@@ -1,0 +1,4 @@
+# Custom React hooks will be implemented here
+# - useAuth
+# - useIncomeEntries
+# - useCategories

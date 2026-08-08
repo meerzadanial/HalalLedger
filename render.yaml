@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: halalornot-backend
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm ci --workspace=packages/backend --include-workspace-root && npx prisma generate --schema=packages/backend/prisma/schema.prisma && npm run build --workspace=packages/backend
+    startCommand: npx prisma migrate deploy --schema=packages/backend/prisma/schema.prisma && npm run start --workspace=packages/backend
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: DATABASE_URL
+        fromDatabase:
+          name: halalornot-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 30m
+      - key: CORS_ORIGIN
+        sync: false # set to your GitHub Pages URL after first deploy, e.g. https://<user>.github.io
+
+databases:
+  - name: halalornot-db
+    plan: free
+    region: singapore

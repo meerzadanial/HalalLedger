@@ -1,0 +1,262 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Toast animations */
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
+}
+
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  color: #111827;
+  background: #f9fafb;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background: #f9fafb;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button:not(:disabled),
+label[for] {
+  touch-action: manipulation;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* Shared mobile input and control sizing keeps primary actions easy to reach and tap. */
+.auth-page input,
+.entry-workflow input {
+  min-height: 48px;
+  font-size: 16px;
+}
+
+.auth-page button,
+.entry-workflow button,
+.dashboard-page button {
+  min-height: 44px;
+}
+
+.entry-workflow__option-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (min-width: 768px) {
+  .dashboard-page .dashboard-main {
+    max-width: 90rem;
+    padding-top: 2rem;
+    padding-bottom: 2.5rem;
+  }
+
+  .dashboard-workspace {
+    display: grid;
+    grid-template-columns: minmax(15rem, 18rem) minmax(0, 1fr);
+    gap: 1.5rem;
+    align-items: start;
+  }
+
+  .dashboard-filters {
+    position: sticky;
+    top: 1.5rem;
+  }
+
+  .dashboard-filters .filter-panel {
+    margin-bottom: 0;
+    padding: 1.5rem;
+  }
+
+  .dashboard-filters .filter-panel__fields {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+  }
+
+  .dashboard-filters .filter-panel__actions {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .dashboard-filters .filter-panel__actions > * + * {
+    margin-left: 0;
+  }
+
+  .dashboard-filters .filter-panel__actions button {
+    width: 100%;
+  }
+
+  .dashboard-entries {
+    min-width: 0;
+  }
+
+  .dashboard-entry {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 1.25rem;
+    align-items: start;
+  }
+
+  .dashboard-entry__actions {
+    align-self: start;
+  }
+
+  .entry-workflow__container {
+    max-width: 48rem;
+  }
+
+  .entry-workflow__card {
+    padding: 2.5rem;
+  }
+
+  .entry-workflow__option-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+
+  .entry-workflow__option-grid > * + * {
+    margin-top: 0;
+  }
+}
+
+@media (min-width: 1024px) {
+  .dashboard-workspace {
+    grid-template-columns: minmax(17rem, 20rem) minmax(0, 1fr);
+    gap: 2rem;
+  }
+}
+
+@media (max-width: 767px) {
+  .auth-page > div {
+    width: 100%;
+    max-width: 28rem;
+  }
+
+  .auth-page h2 {
+    margin-top: 0;
+    font-size: 1.875rem;
+    line-height: 2.25rem;
+  }
+
+  .entry-workflow > div {
+    max-width: 36rem;
+  }
+
+  .entry-workflow h1 {
+    font-size: 1.875rem;
+    line-height: 2.25rem;
+  }
+
+  .entry-workflow h2 {
+    margin-bottom: 0.75rem;
+    font-size: 1.5rem;
+    line-height: 2rem;
+  }
+
+  .entry-workflow__card {
+    padding: 1.25rem;
+    border-radius: 0.75rem;
+  }
+
+  .entry-workflow__actions {
+    display: flex;
+    gap: 0.75rem;
+  }
+
+  .entry-workflow__actions > button {
+    flex: 1 1 0%;
+    padding-right: 1rem;
+    padding-left: 1rem;
+  }
+
+  .dashboard-page header > div {
+    gap: 0.75rem;
+    padding: 1rem;
+  }
+
+  .dashboard-page header h1 {
+    font-size: 1.5rem;
+    line-height: 2rem;
+  }
+
+  .dashboard-page .dashboard-main {
+    padding: 1.25rem 1rem;
+  }
+
+  .dashboard-page .dashboard-totals {
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .dashboard-page .dashboard-totals dd {
+    font-size: 1.5rem;
+    line-height: 2rem;
+  }
+
+  .dashboard-page .dashboard-filters .filter-panel {
+    margin-bottom: 1.25rem;
+  }
+
+  .dashboard-page .dashboard-entries {
+    border-radius: 0.75rem;
+  }
+
+  .dashboard-page .dashboard-entries__header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+    padding: 1rem;
+  }
+
+  .dashboard-page .dashboard-entries__header > button {
+    width: 100%;
+  }
+
+  .dashboard-entry {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .dashboard-entry__actions {
+    justify-content: flex-end;
+  }
+
+  .dashboard-entry__actions button {
+    min-width: 4.5rem;
+  }
+
+  .dashboard-page li .mt-2 {
+    flex-wrap: wrap;
+    gap: 0.375rem 1rem;
+  }
+}
