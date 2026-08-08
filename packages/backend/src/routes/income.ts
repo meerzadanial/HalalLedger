@@ -424,8 +424,8 @@ router.get(
       .isISO8601()
       .withMessage('End date must be a valid ISO 8601 date')
       .custom((value, { req }) => {
-        if (value && req.query.startDate) {
-          const startDate = new Date(req.query.startDate as string);
+        if (value && req.query?.startDate) {
+          const startDate = new Date(req.query?.startDate as string);
           const endDate = new Date(value);
           if (endDate < startDate) {
             throw new Error('End date must be after or equal to start date');
@@ -552,8 +552,8 @@ router.get(
       .isISO8601()
       .withMessage('End date must be a valid ISO 8601 date')
       .custom((value, { req }) => {
-        if (value && req.query.startDate) {
-          const startDate = new Date(req.query.startDate as string);
+        if (value && req.query?.startDate) {
+          const startDate = new Date(req.query?.startDate as string);
           const endDate = new Date(value);
           if (endDate < startDate) {
             throw new Error('End date must be after or equal to start date');

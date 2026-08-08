@@ -45,7 +45,7 @@ router.get(
       .isISO8601()
       .withMessage('End date must be a valid ISO 8601 date')
       .custom((value, { req }) => {
-        if (value && req.query.startDate) {
+        if (value && req.query?.startDate) {
           const startDate = new Date(req.query.startDate as string);
           const endDate = new Date(value);
           if (endDate < startDate) {
@@ -84,7 +84,14 @@ router.get(
       }
 
       // Extract query parameters
-      const { startDate, endDate, restaurantStatus, paymentType } = req.query;
+      // Note: paymentType is accepted for API consistency but not applied below,
+      // since calculateTotals always returns both cash and digital totals.
+      const { startDate, endDate, restaurantStatus } = req.query as {
+        startDate?: string;
+        endDate?: string;
+        restaurantStatus?: string;
+        paymentType?: string;
+      };
 
       // Build filters object
       const filters: any = {};
