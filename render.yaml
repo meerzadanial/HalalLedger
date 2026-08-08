@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     region: singapore
-    buildCommand: npm ci --workspace=packages/backend --include-workspace-root && npx prisma generate --schema=packages/backend/prisma/schema.prisma && npm run build --workspace=packages/backend
+    buildCommand: npm ci --workspace=packages/backend --include-workspace-root --include=dev && npx prisma generate --schema=packages/backend/prisma/schema.prisma && npm run build --workspace=packages/backend
     startCommand: npx prisma migrate deploy --schema=packages/backend/prisma/schema.prisma && npm run start --workspace=packages/backend
     healthCheckPath: /health
     envVars:
