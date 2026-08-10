@@ -12,7 +12,7 @@ describe('App Component', () => {
 
   it('should render the HalalOrNot Income Tracker subtitle', () => {
     render(<App />);
-    const subtitleElement = screen.getByText(/HalalOrNot Income Tracker/i);
+    const subtitleElement = screen.getByText(/HalalLedger Income Tracker/i);
     expect(subtitleElement).toBeInTheDocument();
   });
 });
