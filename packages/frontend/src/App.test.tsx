@@ -6,13 +6,13 @@ describe('App Component', () => {
   it('should render the application with routing', () => {
     render(<App />);
     // The app should render and redirect to /login which shows the login page
-    const titleElement = screen.getByText(/Sign in to your account/i);
+    const titleElement = screen.getByText(/Welcome to HalalLedger /i);
     expect(titleElement).toBeInTheDocument();
   });
 
   it('should render the HalalOrNot Income Tracker subtitle', () => {
     render(<App />);
-    const subtitleElement = screen.getByText(/HalalLedger Income Tracker/i);
+    const subtitleElement = screen.getByText(/Please Login to Continue/i);
     expect(subtitleElement).toBeInTheDocument();
   });
 });
