@@ -75,12 +75,12 @@ halalledger-monorepo/
 
 ## Next Steps
 
-1.✅ ~~Set up authentication service (JWT)~~
-2.✅ ~~Implement API endpoints for income entries and categories~~
-3.✅ ~~Create frontend components for the 5-step delivery entry workflow~~
-4.✅ ~~Implement dashboard and filtering views~~
-5.✅ ~~Add data migration service for CSV/Google Sheets import~~
-6. Set up AWS infrastructure for deployment
+- ✅ ~~Set up authentication service (JWT)~~
+- ✅ ~~Implement API endpoints for income entries and categories~~
+- ✅ ~~Create frontend components for the 5-step delivery entry workflow~~
+- ✅ ~~Implement dashboard and filtering views~~
+- ✅ ~~Add data migration service for CSV/Google Sheets import~~
+-  Set up AWS infrastructure for deployment
 
 ## License
 
