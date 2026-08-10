@@ -1,4 +1,4 @@
-# HalalOrNot Income Tracking System
+# HalalLedger Income Tracking System
 
 A cloud-based (pending) web application for tracking and categorizing delivery income with automatic halal/non-halal segregation.
 
@@ -7,7 +7,7 @@ A cloud-based (pending) web application for tracking and categorizing delivery i
 This is a monorepo containing both frontend and backend packages:
 
 ```
-halalornot-monorepo/
+halalledger-monorepo/
 ├── packages/
 │   ├── frontend/          # React + TypeScript frontend
 │   │   ├── src/
