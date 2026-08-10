@@ -79,7 +79,6 @@ halalledger-monorepo/
 - ✅ ~~Implement API endpoints for income entries and categories~~
 - ✅ ~~Create frontend components for the 5-step delivery entry workflow~~
 - ✅ ~~Implement dashboard and filtering views~~
-- ✅ ~~Add data migration service for CSV/Google Sheets import~~
 -  Set up AWS infrastructure for deployment
 
 ## License
