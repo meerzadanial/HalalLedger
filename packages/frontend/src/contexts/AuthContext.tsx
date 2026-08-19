@@ -1,4 +1,4 @@
-import { createContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useCallback, useEffect, useRef, useState, ReactNode } from 'react';
 import { authApi } from '../services/api';
 import { SessionExpirationWarning } from '../components/SessionExpirationWarning';
 
@@ -44,105 +44,141 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [expiresAt, setExpiresAt] = useState<Date | null>(null);
+  // Every auth operation owns a monotonically increasing id. A response may
+  // update auth state only while it still owns the latest id. This prevents a
+  // suspended startup validation (common when an iOS standalone app resumes)
+  // from clearing a token written by a later successful login.
+  const authOperationId = useRef(0);
+  const beginAuthOperation = useCallback(() => ++authOperationId.current, []);
+  const isCurrentOperation = useCallback(
+    (operationId: number) => authOperationId.current === operationId,
+    [],
+  );
 
-  // Check if user has a valid session on mount
-  useEffect(() => {
-    checkSession();
-  }, []);
-
-  const checkSession = async () => {
+  const checkSession = useCallback(async () => {
+    const operationId = beginAuthOperation();
+    const token = localStorage.getItem('authToken');
     setIsLoading(true);
-    
-    try {
-      const token = localStorage.getItem('authToken');
-      
-      if (!token) {
+
+    if (!token) {
+      if (isCurrentOperation(operationId)) {
         setUser(null);
         setExpiresAt(null);
         setIsLoading(false);
+      }
+      return;
+    }
+
+    try {
+      const sessionData = await authApi.getSession();
+
+      // The request was made for `token`. Ignore it if login/logout replaced
+      // that token or another auth operation started while it was in flight.
+      if (
+        !isCurrentOperation(operationId) ||
+        localStorage.getItem('authToken') !== token
+      ) {
         return;
       }
 
-      // Validate token with backend
-      const sessionData = await authApi.getSession();
-      
       setUser({
         userId: sessionData.userId,
         email: sessionData.email,
       });
       setExpiresAt(new Date(sessionData.expiresAt));
     } catch (error) {
-      // Token is invalid or expired
+      if (!isCurrentOperation(operationId)) return;
+
       console.error('Session validation failed:', error);
-      localStorage.removeItem('authToken');
+      // Never let validation for an older token remove a newer login token.
+      if (localStorage.getItem('authToken') === token) {
+        localStorage.removeItem('authToken');
+      }
       setUser(null);
       setExpiresAt(null);
     } finally {
-      setIsLoading(false);
+      if (isCurrentOperation(operationId)) {
+        setIsLoading(false);
+      }
     }
-  };
+  }, [beginAuthOperation, isCurrentOperation]);
+
+  // Check if the user has a valid session on mount. StrictMode may start this
+  // effect twice in development; operation ownership makes that safe as well.
+  useEffect(() => {
+    void checkSession();
+  }, [checkSession]);
 
   const login = async (email: string, password: string) => {
+    const operationId = beginAuthOperation();
     setIsLoading(true);
-    
-    try {
-      // authApi.login already stores the token in localStorage
-      await authApi.login(email, password);
 
-      // Fetch user session data after successful login
+    try {
+      // authApi.login persists the token before getSession reads it.
+      await authApi.login(email, password);
       const sessionData = await authApi.getSession();
-      
+
+      if (!isCurrentOperation(operationId)) return;
+
       setUser({
         userId: sessionData.userId,
         email: sessionData.email,
       });
       setExpiresAt(new Date(sessionData.expiresAt));
     } catch (error) {
-      // Clear any stale data
+      if (!isCurrentOperation(operationId)) return;
+
       localStorage.removeItem('authToken');
       setUser(null);
       setExpiresAt(null);
-      throw error; // Re-throw for component to handle
+      throw error;
     } finally {
-      setIsLoading(false);
+      if (isCurrentOperation(operationId)) {
+        setIsLoading(false);
+      }
     }
   };
 
   const register = async (email: string, password: string) => {
+    const operationId = beginAuthOperation();
     setIsLoading(true);
 
     try {
-      // Create the account
       await authApi.register(email, password);
-
-      // Log in immediately after successful registration
-      await login(email, password);
     } catch (error) {
-      throw error; // Re-throw for component to handle
-    } finally {
-      setIsLoading(false);
+      if (isCurrentOperation(operationId)) {
+        setIsLoading(false);
+        throw error;
+      }
+      return;
     }
+
+    if (!isCurrentOperation(operationId)) return;
+    // login owns the next operation and propagates any authentication failure.
+    await login(email, password);
   };
 
   const logout = async () => {
+    const operationId = beginAuthOperation();
     setIsLoading(true);
-    
+
     try {
       await authApi.logout();
     } catch (error) {
-      console.error('Logout error:', error);
-      // Continue with local logout even if API call fails
+      if (isCurrentOperation(operationId)) {
+        console.error('Logout error:', error);
+      }
     } finally {
-      // Clear local state regardless of API call success
-      localStorage.removeItem('authToken');
-      setUser(null);
-      setExpiresAt(null);
-      setIsLoading(false);
+      if (isCurrentOperation(operationId)) {
+        localStorage.removeItem('authToken');
+        setUser(null);
+        setExpiresAt(null);
+        setIsLoading(false);
+      }
     }
   };
 
   const extendSession = async () => {
-    // Re-check session to extend it
     await checkSession();
   };
 
