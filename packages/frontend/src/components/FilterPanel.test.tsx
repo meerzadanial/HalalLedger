@@ -34,6 +34,20 @@ describe('FilterPanel', () => {
     expect(screen.getByText(/clear filters/i)).toBeInTheDocument();
   });
 
+  it('uses gap spacing so vertical action buttons remain equally aligned', () => {
+    render(
+      <FilterPanel
+        onApplyFilters={vi.fn()}
+        onClearFilters={vi.fn()}
+      />
+    );
+
+    const actions = screen.getByRole('button', { name: /apply filters/i }).parentElement;
+
+    expect(actions).toHaveClass('gap-3');
+    expect(actions).not.toHaveClass('space-x-3');
+  });
+
   it('applies date range filter correctly (Requirement 8.2)', () => {
     const mockApplyFilters = vi.fn();
     const mockClearFilters = vi.fn();
