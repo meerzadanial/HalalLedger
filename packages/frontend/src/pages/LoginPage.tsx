@@ -92,7 +92,7 @@ export default function LoginPage() {
       <div className="max-w-md w-full space-y-8 rounded-xl bg-white p-6 shadow-sm sm:p-8">
         <div>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Welcome to HalalLedger Income Tracker
+            Welcome
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
             {mode === 'signup' ? 'Create a new account' : 'Please Login to Continue'}

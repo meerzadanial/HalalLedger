@@ -6,7 +6,7 @@ describe('App Component', () => {
   it('should render the application with routing', () => {
     render(<App />);
     // The app should render and redirect to /login which shows the login page
-    const titleElement = screen.getByText(/Welcome to HalalLedger /i);
+    const titleElement = screen.getByRole('heading', { name: 'Welcome' });
     expect(titleElement).toBeInTheDocument();
   });
 
