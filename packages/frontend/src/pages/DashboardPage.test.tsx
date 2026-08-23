@@ -50,6 +50,23 @@ describe('DashboardPage - Timezone Display', () => {
     );
   };
 
+  it('renders an accessible development notice', async () => {
+    vi.mocked(api.deliveryEntriesApi.getAll).mockResolvedValue({ entries: [], total: 0 });
+    vi.mocked(api.analyticsApi.getTotals).mockResolvedValue({
+      totalHalalIncome: 0,
+      totalNonHalalIncome: 0,
+      totalCashIncome: 0,
+      totalDigitalIncome: 0,
+    });
+
+    renderDashboard();
+
+    const notice = await screen.findByRole('status', { name: 'Development notice' });
+    expect(notice).toHaveTextContent(
+      /^The system is still under development\. More features are coming soon!$/
+    );
+  });
+
   it('should display formatted entry dates in local timezone', async () => {
     // Mock API responses with UTC timestamps
     const mockEntries = [

@@ -396,6 +396,14 @@ export default function DashboardPage() {
       </header>
 
       <main className="dashboard-main max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <aside
+          role="status"
+          aria-label="Development notice"
+          className="mb-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium leading-6 text-amber-950 shadow-sm whitespace-normal break-words sm:text-base"
+        >
+          The system is still under development. More features are coming soon!
+        </aside>
+
         {(dashboardError || mutationError) && (
           <div className="mb-4 rounded-md bg-red-50 p-4" role="alert">
             <div className="text-sm text-red-800">{dashboardError || mutationError}</div>
