@@ -1,5 +1,27 @@
+import { Prisma } from "@prisma/client";
 import { getDatabaseClient } from "../database";
 import { DeliveryEntry, DeliveryEntryFormData } from "../types";
+import {
+  buildOwnedEntryWhere,
+  currentMalaysiaDate,
+  type Clock,
+  type DashboardFilters,
+  systemClock,
+} from "./incomeQuery";
+
+export interface EntryQuery extends DashboardFilters {
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+export type TotalsQuery = DashboardFilters;
+
+export interface IncomeTotals {
+  totalHalalIncome: number;
+  totalNonHalalIncome: number;
+  totalCashIncome: number;
+  totalDigitalIncome: number;
+}
 
 /**
  * IncomeService - Handles business logic for delivery entries and income tracking
@@ -14,6 +36,8 @@ import { DeliveryEntry, DeliveryEntryFormData } from "../types";
  * Validates Requirements: 2.7, 3.1, 3.2, 3.3, 5.3, 5.4, 8.1-8.7
  */
 export class IncomeService {
+  constructor(private readonly clock: Clock = systemClock) {}
+
   /**
    * Gets autocomplete suggestions for restaurant names
    * Returns up to 10 matching restaurant names from the user's previous entries
@@ -236,52 +260,24 @@ export class IncomeService {
    */
   async getEntries(
     userId: string,
-    filters?: {
-      startDate?: Date;
-      endDate?: Date;
-      restaurantStatus?: "halal" | "non-halal";
-      paymentType?: "cash" | "digital" | "both";
-      limit?: number;
-      offset?: number;
-    }
+    filters: EntryQuery = {},
   ): Promise<{ entries: DeliveryEntry[]; total: number }> {
     const dbClient = getDatabaseClient();
 
     return await dbClient.executeWithRetry(async () => {
       const prisma = dbClient.getClient();
+      const where = buildOwnedEntryWhere(userId, filters);
 
-      // Build where clause
-      const where: any = { userId };
-
-      if (filters?.startDate || filters?.endDate) {
-        where.entryDate = {};
-        if (filters.startDate) {
-          where.entryDate.gte = filters.startDate;
-        }
-        if (filters.endDate) {
-          where.entryDate.lte = filters.endDate;
-        }
-      }
-
-      if (filters?.restaurantStatus) {
-        where.restaurantStatus = filters.restaurantStatus;
-      }
-
-      if (filters?.paymentType === "cash") {
-        where.hasCashOrder = true;
-      } else if (filters?.paymentType === "digital") {
-        where.hasCashOrder = false;
-      }
-
-      // Get total count
       const total = await prisma.deliveryEntry.count({ where });
-
-      // Get entries with pagination
       const entries = await prisma.deliveryEntry.findMany({
         where,
-        orderBy: { entryDate: "desc" },
-        take: filters?.limit,
-        skip: filters?.offset,
+        orderBy: [
+          { entryDate: "desc" },
+          { timestamp: "desc" },
+          { id: "asc" },
+        ],
+        skip: filters.offset,
+        take: filters.limit,
       });
 
       return {
@@ -292,7 +288,8 @@ export class IncomeService {
           restaurantStatus: entry.restaurantStatus as "halal" | "non-halal",
           fareAmount: Number(entry.fareAmount),
           hasCashOrder: entry.hasCashOrder,
-          cashAmount: entry.cashAmount ? Number(entry.cashAmount) : undefined,
+          cashAmount:
+            entry.cashAmount === null ? undefined : Number(entry.cashAmount),
           entryDate: entry.entryDate,
           timestamp: entry.timestamp,
           createdAt: entry.createdAt,
@@ -314,72 +311,52 @@ export class IncomeService {
    */
   async calculateTotals(
     userId: string,
-    filters?: {
-      startDate?: Date;
-      endDate?: Date;
-      restaurantStatus?: "halal" | "non-halal";
-    }
-  ): Promise<{
-    totalHalalIncome: number;
-    totalNonHalalIncome: number;
-    totalCashIncome: number;
-    totalDigitalIncome: number;
-  }> {
+    filters: TotalsQuery = {},
+  ): Promise<IncomeTotals> {
     const dbClient = getDatabaseClient();
 
     return await dbClient.executeWithRetry(async () => {
       const prisma = dbClient.getClient();
-
-      // Build where clause
-      const where: any = { userId };
-
-      if (filters?.startDate || filters?.endDate) {
-        where.entryDate = {};
-        if (filters.startDate) {
-          where.entryDate.gte = filters.startDate;
-        }
-        if (filters.endDate) {
-          where.entryDate.lte = filters.endDate;
-        }
-      }
-
-      if (filters?.restaurantStatus) {
-        where.restaurantStatus = filters.restaurantStatus;
-      }
-
-      // Get all entries matching the filter
+      const requestedRange = filters.dateRange;
+      const effectiveDateRange = requestedRange ?? (() => {
+        const today = currentMalaysiaDate(this.clock);
+        return { startDate: today, endDate: today };
+      })();
+      const where = buildOwnedEntryWhere(
+        userId,
+        filters,
+        effectiveDateRange,
+      );
       const entries = await prisma.deliveryEntry.findMany({ where });
 
-      // Calculate totals
-      let totalHalalIncome = 0;
-      let totalNonHalalIncome = 0;
-      let totalCashIncome = 0;
-      let totalDigitalIncome = 0;
+      let totalHalalIncome = new Prisma.Decimal(0);
+      let totalNonHalalIncome = new Prisma.Decimal(0);
+      let totalCashIncome = new Prisma.Decimal(0);
+      let totalDigitalIncome = new Prisma.Decimal(0);
 
       for (const entry of entries) {
-        const fareAmount = Number(entry.fareAmount);
-        const cashAmount = entry.cashAmount ? Number(entry.cashAmount) : 0;
-        const totalAmount = fareAmount + cashAmount;
+        const fareAmount = new Prisma.Decimal(entry.fareAmount);
+        const cashAmount =
+          entry.cashAmount === null
+            ? new Prisma.Decimal(0)
+            : new Prisma.Decimal(entry.cashAmount);
+        const entryIncome = fareAmount.plus(cashAmount);
 
-        // Segregate by restaurant status
         if (entry.restaurantStatus === "halal") {
-          totalHalalIncome += totalAmount;
+          totalHalalIncome = totalHalalIncome.plus(entryIncome);
         } else {
-          totalNonHalalIncome += totalAmount;
+          totalNonHalalIncome = totalNonHalalIncome.plus(entryIncome);
         }
 
-        // Segregate by payment type
-        totalDigitalIncome += fareAmount;
-        if (entry.hasCashOrder && cashAmount > 0) {
-          totalCashIncome += cashAmount;
-        }
+        totalCashIncome = totalCashIncome.plus(cashAmount);
+        totalDigitalIncome = totalDigitalIncome.plus(fareAmount);
       }
 
       return {
-        totalHalalIncome,
-        totalNonHalalIncome,
-        totalCashIncome,
-        totalDigitalIncome,
+        totalHalalIncome: totalHalalIncome.toNumber(),
+        totalNonHalalIncome: totalNonHalalIncome.toNumber(),
+        totalCashIncome: totalCashIncome.toNumber(),
+        totalDigitalIncome: totalDigitalIncome.toNumber(),
       };
     });
   }

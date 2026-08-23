@@ -49,6 +49,87 @@ const handleApiError = async (response: Response): Promise<never> => {
   throw new Error(errorMessage);
 };
 
+export type DateOnlyString = string;
+export type DashboardPaymentType = 'cash' | 'digital' | 'both';
+
+export interface DashboardFilterQuery {
+  readonly startDate?: DateOnlyString;
+  readonly endDate?: DateOnlyString;
+  readonly restaurantStatus?: RestaurantStatus;
+  readonly paymentType?: DashboardPaymentType;
+}
+
+export interface DashboardPaginationQuery {
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+export type DeliveryEntriesQuery = DashboardFilterQuery & DashboardPaginationQuery;
+export type DashboardRequestOptions = Readonly<{ signal?: AbortSignal }>;
+export type DeliveryEntryPage = { entries: DeliveryEntry[]; total: number };
+
+const SAFE_DASHBOARD_VALIDATION_DETAILS = new Set([
+  'Start date must be a canonical date in YYYY-MM-DD format',
+  'End date must be a canonical date in YYYY-MM-DD format',
+  'startDate must be on or before endDate',
+  'Invalid date range',
+  'Restaurant status must be either "halal" or "non-halal"',
+  'Payment type must be "cash", "digital", or "both"',
+  'Limit must be an integer between 1 and 100',
+  'Offset must be an integer between 0 and 2147483647',
+]);
+
+const isDashboardErrorBody = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+export class DashboardApiError extends Error {
+  readonly status: number;
+  readonly details: readonly string[];
+
+  constructor(status: number, message: string, details: readonly string[] = []) {
+    super(message);
+    this.name = 'DashboardApiError';
+    this.status = status;
+    this.details = details;
+  }
+}
+
+const handleDashboardApiError = async (response: Response): Promise<never> => {
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    throw new DashboardApiError(
+      response.status,
+      response.statusText || 'An error occurred',
+    );
+  }
+
+  if (!isDashboardErrorBody(body)) {
+    throw new DashboardApiError(response.status, 'An error occurred');
+  }
+
+  if (response.status === 400 && body.error === 'Validation failed') {
+    const validationDetails = Array.isArray(body.details)
+      ? [...new Set(body.details.filter(
+        (detail): detail is string =>
+          typeof detail === 'string' && SAFE_DASHBOARD_VALIDATION_DETAILS.has(detail),
+      ))]
+      : [];
+    const message = validationDetails.length > 0
+      ? `Validation failed: ${validationDetails.join(' ')}`
+      : 'Validation failed';
+    throw new DashboardApiError(response.status, message, validationDetails);
+  }
+
+  const message = typeof body.error === 'string'
+    ? body.error
+    : typeof body.message === 'string'
+      ? body.message
+      : 'An error occurred';
+  throw new DashboardApiError(response.status, message);
+};
+
 // Helper function to retry failed requests (for transient failures)
 // Exported for reuse in consumers that need retry-aware fetches.
 export const fetchWithRetry = async (
@@ -203,32 +284,28 @@ export const deliveryEntriesApi = {
    * @param filters - Optional filters
    * @returns Promise with entries and total count
    */
-  getAll: async (filters?: {
-    startDate?: Date;
-    endDate?: Date;
-    restaurantStatus?: RestaurantStatus;
-    paymentType?: 'cash' | 'digital' | 'both';
-    limit?: number;
-    offset?: number;
-  }): Promise<{ entries: DeliveryEntry[]; total: number }> => {
+  getAll: async (
+    filters?: DeliveryEntriesQuery,
+    options?: DashboardRequestOptions,
+  ): Promise<DeliveryEntryPage> => {
     const params = new URLSearchParams();
     
-    if (filters?.startDate) {
-      params.append('startDate', filters.startDate.toISOString());
+    if (filters?.startDate !== undefined) {
+      params.append('startDate', filters.startDate);
     }
-    if (filters?.endDate) {
-      params.append('endDate', filters.endDate.toISOString());
+    if (filters?.endDate !== undefined) {
+      params.append('endDate', filters.endDate);
     }
-    if (filters?.restaurantStatus) {
+    if (filters?.restaurantStatus !== undefined) {
       params.append('restaurantStatus', filters.restaurantStatus);
     }
-    if (filters?.paymentType) {
+    if (filters?.paymentType !== undefined) {
       params.append('paymentType', filters.paymentType);
     }
-    if (filters?.limit) {
+    if (filters?.limit !== undefined) {
       params.append('limit', filters.limit.toString());
     }
-    if (filters?.offset) {
+    if (filters?.offset !== undefined) {
       params.append('offset', filters.offset.toString());
     }
 
@@ -236,10 +313,11 @@ export const deliveryEntriesApi = {
     const response = await fetch(url, {
       method: 'GET',
       headers: getAuthHeaders(),
+      signal: options?.signal,
     });
 
     if (!response.ok) {
-      await handleApiError(response);
+      await handleDashboardApiError(response);
     }
 
     return await response.json();
@@ -309,31 +387,34 @@ export const analyticsApi = {
    * @param filters - Optional filters
    * @returns Promise with income totals breakdown
    */
-  getTotals: async (filters?: {
-    startDate?: Date;
-    endDate?: Date;
-    restaurantStatus?: RestaurantStatus;
-  }): Promise<IncomeTotals> => {
+  getTotals: async (
+    filters?: DashboardFilterQuery,
+    options?: DashboardRequestOptions,
+  ): Promise<IncomeTotals> => {
     const params = new URLSearchParams();
     
-    if (filters?.startDate) {
-      params.append('startDate', filters.startDate.toISOString());
+    if (filters?.startDate !== undefined) {
+      params.append('startDate', filters.startDate);
     }
-    if (filters?.endDate) {
-      params.append('endDate', filters.endDate.toISOString());
+    if (filters?.endDate !== undefined) {
+      params.append('endDate', filters.endDate);
     }
-    if (filters?.restaurantStatus) {
+    if (filters?.restaurantStatus !== undefined) {
       params.append('restaurantStatus', filters.restaurantStatus);
+    }
+    if (filters?.paymentType !== undefined) {
+      params.append('paymentType', filters.paymentType);
     }
 
     const url = `${API_BASE_URL}/api/analytics/totals${params.toString() ? '?' + params.toString() : ''}`;
     const response = await fetch(url, {
       method: 'GET',
       headers: getAuthHeaders(),
+      signal: options?.signal,
     });
 
     if (!response.ok) {
-      await handleApiError(response);
+      await handleDashboardApiError(response);
     }
 
     return await response.json();

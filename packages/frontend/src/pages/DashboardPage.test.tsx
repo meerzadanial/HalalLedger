@@ -425,10 +425,13 @@ describe('DashboardPage - Pagination', () => {
     renderDashboard();
 
     await waitFor(() => {
-      expect(api.deliveryEntriesApi.getAll).toHaveBeenCalledWith({
-        limit: 10,
-        offset: 0,
-      });
+      expect(api.deliveryEntriesApi.getAll).toHaveBeenCalledWith(
+        {
+          limit: 10,
+          offset: 0,
+        },
+        { signal: expect.any(AbortSignal) },
+      );
     });
   });
 

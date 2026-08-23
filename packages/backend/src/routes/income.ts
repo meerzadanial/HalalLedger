@@ -1,6 +1,12 @@
 import { Router, Response } from 'express';
 import { body, query, validationResult } from 'express-validator';
-import { IncomeService } from '../services/IncomeService';
+import { IncomeService, type EntryQuery } from '../services/IncomeService';
+import {
+  normalizeExplicitDateRange,
+  parseDateOnly,
+  type PaymentType,
+  type RestaurantStatus,
+} from '../services/incomeQuery';
 import { authenticateToken, AuthenticatedRequest } from '../middleware/auth';
 import { DeliveryEntryFormData } from '../types';
 
@@ -417,22 +423,12 @@ router.get(
   [
     query('startDate')
       .optional()
-      .isISO8601()
-      .withMessage('Start date must be a valid ISO 8601 date'),
+      .custom((value) => parseDateOnly(value))
+      .withMessage('Start date must be a canonical date in YYYY-MM-DD format'),
     query('endDate')
       .optional()
-      .isISO8601()
-      .withMessage('End date must be a valid ISO 8601 date')
-      .custom((value, { req }) => {
-        if (value && req.query?.startDate) {
-          const startDate = new Date(req.query?.startDate as string);
-          const endDate = new Date(value);
-          if (endDate < startDate) {
-            throw new Error('End date must be after or equal to start date');
-          }
-        }
-        return true;
-      }),
+      .custom((value) => parseDateOnly(value))
+      .withMessage('End date must be a canonical date in YYYY-MM-DD format'),
     query('restaurantStatus')
       .optional()
       .isString()
@@ -450,8 +446,8 @@ router.get(
       .toInt(),
     query('offset')
       .optional()
-      .isInt({ min: 0 })
-      .withMessage('Offset must be a non-negative integer')
+      .isInt({ min: 0, max: 2147483647 })
+      .withMessage('Offset must be an integer between 0 and 2147483647')
       .toInt(),
   ],
   async (req: AuthenticatedRequest, res: Response): Promise<void> => {
@@ -472,37 +468,35 @@ router.get(
         return;
       }
 
-      // Extract query parameters
-      const {
-        startDate,
-        endDate,
-        restaurantStatus,
-        paymentType,
-        limit = 50,
-        offset = 0,
-      } = req.query;
+      let dateRange: ReturnType<typeof normalizeExplicitDateRange>;
+      try {
+        dateRange = normalizeExplicitDateRange(
+          req.query.startDate,
+          req.query.endDate,
+        );
+      } catch (error) {
+        res.status(400).json({
+          error: 'Validation failed',
+          details: [
+            error instanceof Error
+              ? error.message
+              : 'Invalid date range',
+          ],
+        });
+        return;
+      }
 
-      // Build filters object
-      const filters: any = {
-        limit: Number(limit),
-        offset: Number(offset),
+      const filters: EntryQuery = {
+        limit: Number(req.query.limit ?? 50),
+        offset: Number(req.query.offset ?? 0),
+        ...(dateRange && { dateRange }),
+        ...(req.query.restaurantStatus && {
+          restaurantStatus: req.query.restaurantStatus as RestaurantStatus,
+        }),
+        ...(req.query.paymentType && {
+          paymentType: req.query.paymentType as PaymentType,
+        }),
       };
-
-      if (startDate) {
-        filters.startDate = new Date(startDate as string);
-      }
-
-      if (endDate) {
-        filters.endDate = new Date(endDate as string);
-      }
-
-      if (restaurantStatus) {
-        filters.restaurantStatus = restaurantStatus as 'halal' | 'non-halal';
-      }
-
-      if (paymentType) {
-        filters.paymentType = paymentType as 'cash' | 'digital' | 'both';
-      }
 
       // Get entries from service
       const result = await incomeService.getEntries(req.user.userId, filters);

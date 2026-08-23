@@ -13,29 +13,46 @@ import type { RestaurantStatus } from '../types';
  */
 
 export interface FilterOptions {
-  startDate?: Date;
-  endDate?: Date;
+  startDate?: string;
+  endDate?: string;
   restaurantStatus?: RestaurantStatus | 'both';
   paymentType?: 'cash' | 'digital' | 'both';
 }
 
+export interface AppliedFilterResult {
+  readonly kind: 'applied';
+  readonly filters: FilterOptions;
+}
+
+export interface InvalidFilterApplyResult {
+  readonly kind: 'invalid';
+  readonly reason: 'reversed-date-range';
+  readonly message: string;
+  readonly retainedFilters: FilterOptions;
+  readonly draftDates: Readonly<{ startDate: string; endDate: string }>;
+}
+
+export interface ClearedFilterResult {
+  readonly kind: 'cleared';
+  readonly filters: FilterOptions;
+}
+
 interface FilterPanelProps {
-  onApplyFilters: (filters: FilterOptions) => void;
-  onClearFilters: () => void;
+  onApplyFilters: (filters: FilterOptions, result: AppliedFilterResult) => void;
+  onInvalidApply?: (result: InvalidFilterApplyResult) => void;
+  onClearFilters: (result: ClearedFilterResult) => void;
   initialFilters?: FilterOptions;
 }
 
 export default function FilterPanel({
   onApplyFilters,
+  onInvalidApply,
   onClearFilters,
   initialFilters = {},
 }: FilterPanelProps) {
-  const [startDate, setStartDate] = useState<string>(
-    initialFilters.startDate ? formatDateForInput(initialFilters.startDate) : ''
-  );
-  const [endDate, setEndDate] = useState<string>(
-    initialFilters.endDate ? formatDateForInput(initialFilters.endDate) : ''
-  );
+  // These values are drafts only; parent callbacks own the applied filter state.
+  const [startDate, setStartDate] = useState<string>(initialFilters.startDate ?? '');
+  const [endDate, setEndDate] = useState<string>(initialFilters.endDate ?? '');
   const [restaurantStatus, setRestaurantStatus] = useState<'halal' | 'non-halal' | 'both'>(
     initialFilters.restaurantStatus || 'both'
   );
@@ -43,43 +60,34 @@ export default function FilterPanel({
     initialFilters.paymentType || 'both'
   );
 
-  // Helper function to format Date to YYYY-MM-DD for input field
-  function formatDateForInput(date: Date): string {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  }
-
-  // Helper function to parse input string to Date
-  function parseInputDate(dateString: string): Date | undefined {
-    if (!dateString) return undefined;
-    const date = new Date(dateString);
-    return isNaN(date.getTime()) ? undefined : date;
-  }
+  const buildNonDateFilters = (): FilterOptions => ({
+    ...(restaurantStatus !== 'both' ? { restaurantStatus } : {}),
+    ...(paymentType !== 'both' ? { paymentType } : {}),
+  });
 
   const handleApplyFilters = () => {
-    const filters: FilterOptions = {};
+    const retainedFilters = buildNonDateFilters();
+    const normalizedStartDate = startDate || endDate;
+    const normalizedEndDate = endDate || startDate;
 
-    // Add date range if provided
-    if (startDate) {
-      filters.startDate = parseInputDate(startDate);
-    }
-    if (endDate) {
-      filters.endDate = parseInputDate(endDate);
-    }
-
-    // Add restaurant status if not "both"
-    if (restaurantStatus !== 'both') {
-      filters.restaurantStatus = restaurantStatus as RestaurantStatus;
-    }
-
-    // Add payment type if not "both"
-    if (paymentType !== 'both') {
-      filters.paymentType = paymentType;
+    if (normalizedStartDate && normalizedEndDate && normalizedStartDate > normalizedEndDate) {
+      onInvalidApply?.({
+        kind: 'invalid',
+        reason: 'reversed-date-range',
+        message: 'Start date must be on or before end date.',
+        retainedFilters,
+        draftDates: { startDate, endDate },
+      });
+      return;
     }
 
-    onApplyFilters(filters);
+    const filters: FilterOptions = {
+      ...(normalizedStartDate ? { startDate: normalizedStartDate } : {}),
+      ...(normalizedEndDate ? { endDate: normalizedEndDate } : {}),
+      ...retainedFilters,
+    };
+
+    onApplyFilters(filters, { kind: 'applied', filters });
   };
 
   const handleClearFilters = () => {
@@ -87,7 +95,7 @@ export default function FilterPanel({
     setEndDate('');
     setRestaurantStatus('both');
     setPaymentType('both');
-    onClearFilters();
+    onClearFilters({ kind: 'cleared', filters: {} });
   };
 
   return (

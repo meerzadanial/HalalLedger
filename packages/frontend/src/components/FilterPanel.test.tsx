@@ -73,10 +73,12 @@ describe('FilterPanel', () => {
     expect(mockApplyFilters).toHaveBeenCalledTimes(1);
     const calledFilters = mockApplyFilters.mock.calls[0][0] as FilterOptions;
     
-    expect(calledFilters.startDate).toBeDefined();
-    expect(calledFilters.endDate).toBeDefined();
-    expect(calledFilters.startDate?.toISOString()).toContain('2024-01-01');
-    expect(calledFilters.endDate?.toISOString()).toContain('2024-01-31');
+    expect(calledFilters.startDate).toBe('2024-01-01');
+    expect(calledFilters.endDate).toBe('2024-01-31');
+    expect(mockApplyFilters.mock.calls[0][1]).toEqual({
+      kind: 'applied',
+      filters: calledFilters,
+    });
   });
 
   it('applies restaurant status filter correctly (Requirement 8.3)', () => {
@@ -176,8 +178,8 @@ describe('FilterPanel', () => {
     expect(statusSelect.value).toBe('both');
     expect(paymentTypeSelect.value).toBe('both');
 
-    // Check that callback was called
-    expect(mockClearFilters).toHaveBeenCalledTimes(1);
+    // Check that callback emitted a date-only clear transition
+    expect(mockClearFilters).toHaveBeenCalledWith({ kind: 'cleared', filters: {} });
   });
 
   it('applies multiple filters simultaneously', () => {
@@ -215,13 +217,121 @@ describe('FilterPanel', () => {
     expect(calledFilters.paymentType).toBe('digital');
   });
 
+  it.each([
+    ['start', /start date/i, /end date/i, '2024-05-09'],
+    ['end', /end date/i, /start date/i, '2024-06-10'],
+  ])('normalizes a lone %s boundary to a one-day date-only range', (_boundary, filledLabel, emptyLabel, date) => {
+    const mockApplyFilters = vi.fn();
+
+    render(
+      <FilterPanel
+        onApplyFilters={mockApplyFilters}
+        onClearFilters={vi.fn()}
+      />
+    );
+
+    const filledInput = screen.getByLabelText(filledLabel) as HTMLInputElement;
+    const emptyInput = screen.getByLabelText(emptyLabel) as HTMLInputElement;
+    fireEvent.change(filledInput, { target: { value: date } });
+
+    expect(mockApplyFilters).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /apply filters/i }));
+
+    expect(mockApplyFilters).toHaveBeenCalledWith(
+      { startDate: date, endDate: date },
+      { kind: 'applied', filters: { startDate: date, endDate: date } },
+    );
+    expect(filledInput.value).toBe(date);
+    expect(emptyInput.value).toBe('');
+  });
+
+  it('rejects a reversed range, retains non-date drafts, and applies a corrected range', () => {
+    const mockApplyFilters = vi.fn();
+    const mockInvalidApply = vi.fn();
+
+    render(
+      <FilterPanel
+        onApplyFilters={mockApplyFilters}
+        onInvalidApply={mockInvalidApply}
+        onClearFilters={vi.fn()}
+      />
+    );
+
+    const startDateInput = screen.getByLabelText(/start date/i) as HTMLInputElement;
+    const endDateInput = screen.getByLabelText(/end date/i) as HTMLInputElement;
+    const statusSelect = screen.getByLabelText(/restaurant status/i) as HTMLSelectElement;
+    const paymentTypeSelect = screen.getByLabelText(/payment type/i) as HTMLSelectElement;
+
+    fireEvent.change(startDateInput, { target: { value: '2024-07-20' } });
+    fireEvent.change(endDateInput, { target: { value: '2024-07-10' } });
+    fireEvent.change(statusSelect, { target: { value: 'halal' } });
+    fireEvent.change(paymentTypeSelect, { target: { value: 'cash' } });
+    fireEvent.click(screen.getByRole('button', { name: /apply filters/i }));
+
+    expect(mockApplyFilters).not.toHaveBeenCalled();
+    expect(mockInvalidApply).toHaveBeenCalledWith({
+      kind: 'invalid',
+      reason: 'reversed-date-range',
+      message: 'Start date must be on or before end date.',
+      retainedFilters: { restaurantStatus: 'halal', paymentType: 'cash' },
+      draftDates: { startDate: '2024-07-20', endDate: '2024-07-10' },
+    });
+    expect(statusSelect.value).toBe('halal');
+    expect(paymentTypeSelect.value).toBe('cash');
+
+    fireEvent.change(endDateInput, { target: { value: '2024-07-21' } });
+    expect(mockApplyFilters).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /apply filters/i }));
+
+    expect(mockApplyFilters).toHaveBeenCalledWith(
+      {
+        startDate: '2024-07-20',
+        endDate: '2024-07-21',
+        restaurantStatus: 'halal',
+        paymentType: 'cash',
+      },
+      {
+        kind: 'applied',
+        filters: {
+          startDate: '2024-07-20',
+          endDate: '2024-07-21',
+          restaurantStatus: 'halal',
+          paymentType: 'cash',
+        },
+      },
+    );
+  });
+
+  it('keeps draft edits separate from the last applied result', () => {
+    const mockApplyFilters = vi.fn();
+
+    render(
+      <FilterPanel
+        onApplyFilters={mockApplyFilters}
+        onClearFilters={vi.fn()}
+        initialFilters={{ startDate: '2024-08-01', endDate: '2024-08-01' }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /apply filters/i }));
+    fireEvent.change(screen.getByLabelText(/end date/i), {
+      target: { value: '2024-08-03' },
+    });
+
+    expect(mockApplyFilters).toHaveBeenCalledTimes(1);
+    expect(mockApplyFilters.mock.calls[0][0]).toEqual({
+      startDate: '2024-08-01',
+      endDate: '2024-08-01',
+    });
+  });
+
   it('initializes with provided initial filters', () => {
     const mockApplyFilters = vi.fn();
     const mockClearFilters = vi.fn();
     
     const initialFilters: FilterOptions = {
-      startDate: new Date('2024-01-01'),
-      endDate: new Date('2024-01-31'),
+      startDate: '2024-01-01',
+      endDate: '2024-01-31',
       restaurantStatus: 'halal',
       paymentType: 'cash',
     };

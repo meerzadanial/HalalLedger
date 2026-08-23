@@ -1,17 +1,65 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { deliveryEntriesApi, analyticsApi } from '../services/api';
-import type { DeliveryEntry, IncomeTotals, RestaurantStatus } from '../types';
+import {
+  createMalaysiaMidnightRefreshController,
+  type MalaysiaMidnightRefreshController,
+} from '../hooks/malaysiaMidnightRefresh';
+import {
+  DashboardApiError,
+  deliveryEntriesApi,
+  analyticsApi,
+  type DashboardFilterQuery,
+  type DeliveryEntryPage,
+} from '../services/api';
+import type { DeliveryEntry, IncomeTotals } from '../types';
 import { formatDate, formatDateTime, formatTimestamp } from '../utils/dateFormat';
 import { showSuccess, showError } from '../utils/toast';
-import FilterPanel, { type FilterOptions } from '../components/FilterPanel';
+import FilterPanel, {
+  type AppliedFilterResult,
+  type ClearedFilterResult,
+  type FilterOptions,
+  type InvalidFilterApplyResult,
+} from '../components/FilterPanel';
 
-type AppliedFilterOptions = {
-  startDate?: Date;
-  endDate?: Date;
-  restaurantStatus?: RestaurantStatus;
-  paymentType?: 'cash' | 'digital';
+type AppliedFilterOptions = DashboardFilterQuery;
+
+const SUSPENDED_MIDNIGHT_SCOPE = { startDate: '__suspended__' } as const;
+const suspendedMidnightRefresh = async (): Promise<void> => {};
+
+const toNonDateFilters = (filters: AppliedFilterOptions): AppliedFilterOptions => ({
+  ...(filters.restaurantStatus ? { restaurantStatus: filters.restaurantStatus } : {}),
+  ...(filters.paymentType ? { paymentType: filters.paymentType } : {}),
+});
+
+const toAppliedFilters = (filters: FilterOptions): AppliedFilterOptions => ({
+  ...(filters.startDate ? { startDate: filters.startDate } : {}),
+  ...(filters.endDate ? { endDate: filters.endDate } : {}),
+  ...(filters.restaurantStatus && filters.restaurantStatus !== 'both'
+    ? { restaurantStatus: filters.restaurantStatus }
+    : {}),
+  ...(filters.paymentType && filters.paymentType !== 'both'
+    ? { paymentType: filters.paymentType }
+    : {}),
+});
+
+export type DashboardDataState =
+  | { kind: 'loading' }
+  | { kind: 'ready'; entries: DeliveryEntryPage; totals: IncomeTotals }
+  | { kind: 'validation-error'; message: string }
+  | { kind: 'load-error'; message: string };
+
+type DashboardViewState = {
+  data: DashboardDataState;
+  refreshError: string | null;
+};
+
+const errorMessageFor = (error: unknown): string =>
+  error instanceof Error ? error.message : 'Failed to load data';
+
+const isUnauthorizedError = (error: unknown): boolean => {
+  const message = errorMessageFor(error);
+  return message.includes('Unauthorized') || message.includes('Invalid token');
 };
 
 /**
@@ -29,50 +77,188 @@ type AppliedFilterOptions = {
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { logout: authLogout } = useAuth();
-  const [entries, setEntries] = useState<DeliveryEntry[]>([]);
-  const [totals, setTotals] = useState<IncomeTotals | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [dashboardView, setDashboardView] = useState<DashboardViewState>({
+    data: { kind: 'loading' },
+    refreshError: null,
+  });
+  const [mutationError, setMutationError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
+  const requestGenerationRef = useRef(0);
+  const requestControllerRef = useRef<AbortController | null>(null);
+  const midnightControllerRef = useRef<MalaysiaMidnightRefreshController | null>(null);
+  const [filterValidationBlocked, setFilterValidationBlocked] = useState(false);
   
   // Pagination state
   const [limit] = useState(10); // Items per page (fixed at 10)
   const [offset, setOffset] = useState(0); // Current offset
-  const [total, setTotal] = useState(0); // Total number of entries
   const [activeFilters, setActiveFilters] = useState<AppliedFilterOptions>({});
 
-  useEffect(() => {
-    loadData();
-  }, [offset, activeFilters]); // Reload when pagination or filters change
+  const preserveUnauthorizedBehavior = useCallback((error: unknown): void => {
+    if (!isUnauthorizedError(error)) return;
+    localStorage.removeItem('authToken');
+    navigate('/login');
+  }, [navigate]);
 
-  const loadData = async () => {
-    setLoading(true);
-    setError('');
+  const suspendMidnightRefresh = useCallback((): void => {
+    midnightControllerRef.current?.update({
+      scope: SUSPENDED_MIDNIGHT_SCOPE,
+      refreshTotals: suspendedMidnightRefresh,
+    });
+  }, []);
 
-    try {
-      // Load entries and totals in parallel
-      const [entriesResponse, totalsResponse] = await Promise.all([
-        deliveryEntriesApi.getAll({ ...activeFilters, limit, offset }),
-        analyticsApi.getTotals(activeFilters),
-      ]);
+  const cancelDashboardLoad = useCallback(() => {
+    requestGenerationRef.current += 1;
+    requestControllerRef.current?.abort();
+    requestControllerRef.current = null;
+    suspendMidnightRefresh();
+  }, [suspendMidnightRefresh]);
 
-      setEntries(entriesResponse.entries);
-      setTotal(entriesResponse.total);
-      setTotals(totalsResponse);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load data';
-      setError(errorMessage);
-      
-      // If unauthorized, redirect to login
-      if (errorMessage.includes('Unauthorized') || errorMessage.includes('Invalid token')) {
-        localStorage.removeItem('authToken');
-        navigate('/login');
-      }
-    } finally {
-      setLoading(false);
+  const activateMidnightRefresh = useCallback((
+    filters: AppliedFilterOptions,
+    owningGeneration: number,
+  ): void => {
+    if (filters.startDate || filters.endDate) return;
+
+    const nonDateFilters = toNonDateFilters(filters);
+    midnightControllerRef.current?.update({
+      scope: filters,
+      refreshTotals: async ({ signal }) => {
+        try {
+          const refreshedTotals = await analyticsApi.getTotals(
+            nonDateFilters,
+            { signal },
+          );
+
+          if (signal.aborted || owningGeneration !== requestGenerationRef.current) return;
+          setDashboardView((current) => {
+            if (
+              signal.aborted
+              || owningGeneration !== requestGenerationRef.current
+              || current.data.kind !== 'ready'
+            ) {
+              return current;
+            }
+
+            return {
+              ...current,
+              data: { ...current.data, totals: refreshedTotals },
+            };
+          });
+        } catch (error) {
+          if (!signal.aborted && owningGeneration === requestGenerationRef.current) {
+            preserveUnauthorizedBehavior(error);
+          }
+          throw error;
+        }
+      },
+    });
+  }, [preserveUnauthorizedBehavior]);
+
+  const loadDashboard = useCallback(async (): Promise<void> => {
+    const generation = ++requestGenerationRef.current;
+    const filtersForLoad = activeFilters;
+    requestControllerRef.current?.abort();
+    suspendMidnightRefresh();
+
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
+    setDashboardView((current) => ({ ...current, data: { kind: 'loading' } }));
+
+    const [entriesResult, totalsResult] = await Promise.allSettled([
+      deliveryEntriesApi.getAll(
+        { ...filtersForLoad, limit, offset },
+        { signal: controller.signal },
+      ),
+      analyticsApi.getTotals(filtersForLoad, { signal: controller.signal }),
+    ]);
+
+    if (controller.signal.aborted || generation !== requestGenerationRef.current) {
+      return;
     }
-  };
+
+    if (entriesResult.status === 'fulfilled' && totalsResult.status === 'fulfilled') {
+      setDashboardView({
+        data: {
+          kind: 'ready',
+          entries: entriesResult.value,
+          totals: totalsResult.value,
+        },
+        refreshError: null,
+      });
+      activateMidnightRefresh(filtersForLoad, generation);
+    } else {
+      const failures = [entriesResult, totalsResult]
+        .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+        .map((result) => result.reason as unknown);
+      const failure = failures.find(isUnauthorizedError) ?? failures[0];
+      const message = errorMessageFor(failure);
+      const kind = failure instanceof DashboardApiError && failure.status === 400
+        ? 'validation-error'
+        : 'load-error';
+
+      setDashboardView((current) => ({
+        ...current,
+        data: { kind, message },
+      }));
+      preserveUnauthorizedBehavior(failure);
+    }
+
+    if (requestControllerRef.current === controller) {
+      requestControllerRef.current = null;
+    }
+  }, [
+    activeFilters,
+    activateMidnightRefresh,
+    limit,
+    offset,
+    preserveUnauthorizedBehavior,
+    suspendMidnightRefresh,
+  ]);
+
+  useEffect(() => {
+    const controller = createMalaysiaMidnightRefreshController({
+      scope: SUSPENDED_MIDNIGHT_SCOPE,
+      refreshTotals: suspendedMidnightRefresh,
+      onRefreshError: (error) => {
+        setDashboardView((current) => ({
+          ...current,
+          refreshError: error === null
+            ? null
+            : `Unable to refresh daily totals: ${errorMessageFor(error)}`,
+        }));
+        if (error !== null) preserveUnauthorizedBehavior(error);
+      },
+    });
+    midnightControllerRef.current = controller;
+
+    return () => {
+      controller.dispose();
+      if (midnightControllerRef.current === controller) {
+        midnightControllerRef.current = null;
+      }
+    };
+  }, [preserveUnauthorizedBehavior]);
+
+  useEffect(() => {
+    if (filterValidationBlocked) {
+      cancelDashboardLoad();
+      return;
+    }
+
+    void loadDashboard();
+
+    return cancelDashboardLoad;
+  }, [cancelDashboardLoad, filterValidationBlocked, loadDashboard]);
+
+  const readyData = dashboardView.data.kind === 'ready' ? dashboardView.data : null;
+  const entries = readyData?.entries.entries ?? [];
+  const total = readyData?.entries.total ?? 0;
+  const totals = readyData?.totals ?? null;
+  const dashboardError = dashboardView.data.kind === 'validation-error'
+    || dashboardView.data.kind === 'load-error'
+    ? dashboardView.data.message
+    : '';
 
   const handleLogout = async () => {
     try {
@@ -109,7 +295,7 @@ export default function DashboardPage() {
     }
 
     setDeletingEntryId(entry.id);
-    setError('');
+    setMutationError('');
     setSuccessMessage('');
 
     try {
@@ -120,10 +306,10 @@ export default function DashboardPage() {
       showSuccess('Entry deleted successfully');
 
       // Refresh dashboard data - this will recalculate totals (Requirement 14.4)
-      await loadData();
+      await loadDashboard();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to delete entry';
-      setError(errorMessage);
+      setMutationError(errorMessage);
       showError(errorMessage);
 
       // If unauthorized, redirect to login
@@ -161,26 +347,32 @@ export default function DashboardPage() {
     }
   };
 
-  const handleApplyFilters = (filters: FilterOptions) => {
-    setActiveFilters({
-      startDate: filters.startDate,
-      endDate: filters.endDate,
-      ...(filters.restaurantStatus && filters.restaurantStatus !== 'both'
-        ? { restaurantStatus: filters.restaurantStatus }
-        : {}),
-      ...(filters.paymentType && filters.paymentType !== 'both'
-        ? { paymentType: filters.paymentType }
-        : {}),
+  const handleApplyFilters = (_filters: FilterOptions, result: AppliedFilterResult) => {
+    suspendMidnightRefresh();
+    setFilterValidationBlocked(false);
+    setActiveFilters(toAppliedFilters(result.filters));
+    setOffset(0);
+  };
+
+  const handleInvalidFilterApply = (result: InvalidFilterApplyResult) => {
+    cancelDashboardLoad();
+    setFilterValidationBlocked(true);
+    setActiveFilters(toAppliedFilters(result.retainedFilters));
+    setOffset(0);
+    setDashboardView({
+      data: { kind: 'validation-error', message: result.message },
+      refreshError: null,
     });
+  };
+
+  const handleClearFilters = (result: ClearedFilterResult) => {
+    suspendMidnightRefresh();
+    setFilterValidationBlocked(false);
+    setActiveFilters(toAppliedFilters(result.filters));
     setOffset(0);
   };
 
-  const handleClearFilters = () => {
-    setActiveFilters({});
-    setOffset(0);
-  };
-
-  if (loading) {
+  if (dashboardView.data.kind === 'loading') {
     return (
       <div className="dashboard-page min-h-screen bg-gray-50 flex items-center justify-center px-4">
         <div className="rounded-lg bg-white px-6 py-5 text-center text-gray-600 shadow-sm">Loading...</div>
@@ -204,9 +396,15 @@ export default function DashboardPage() {
       </header>
 
       <main className="dashboard-main max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-        {error && (
-          <div className="mb-4 rounded-md bg-red-50 p-4">
-            <div className="text-sm text-red-800">{error}</div>
+        {(dashboardError || mutationError) && (
+          <div className="mb-4 rounded-md bg-red-50 p-4" role="alert">
+            <div className="text-sm text-red-800">{dashboardError || mutationError}</div>
+          </div>
+        )}
+
+        {dashboardView.refreshError && (
+          <div className="mb-4 rounded-md bg-amber-50 p-4" role="status">
+            <div className="text-sm text-amber-800">{dashboardView.refreshError}</div>
           </div>
         )}
 
@@ -269,12 +467,14 @@ export default function DashboardPage() {
           <aside className="dashboard-filters" aria-label="Filter delivery entries">
             <FilterPanel
               onApplyFilters={handleApplyFilters}
+              onInvalidApply={handleInvalidFilterApply}
               onClearFilters={handleClearFilters}
               initialFilters={activeFilters}
             />
           </aside>
 
-          <section className="dashboard-entries bg-white shadow overflow-hidden sm:rounded-lg" aria-labelledby="recent-deliveries-heading">
+          {readyData && (
+            <section className="dashboard-entries bg-white shadow overflow-hidden sm:rounded-lg" aria-labelledby="recent-deliveries-heading">
           <div className="dashboard-entries__header px-4 py-5 sm:px-6 flex justify-between items-center">
             <div>
               <h2 id="recent-deliveries-heading" className="text-lg leading-6 font-medium text-gray-900">
@@ -457,7 +657,8 @@ export default function DashboardPage() {
               </>
             )}
           </div>
-          </section>
+            </section>
+          )}
         </section>
       </main>
     </div>

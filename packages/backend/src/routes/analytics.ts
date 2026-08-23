@@ -1,6 +1,12 @@
 import { Router, Response } from 'express';
 import { query, validationResult } from 'express-validator';
-import { IncomeService } from '../services/IncomeService';
+import { IncomeService, type TotalsQuery } from '../services/IncomeService';
+import {
+  normalizeExplicitDateRange,
+  parseDateOnly,
+  type PaymentType,
+  type RestaurantStatus,
+} from '../services/incomeQuery';
 import { authenticateToken, AuthenticatedRequest } from '../middleware/auth';
 
 const router = Router();
@@ -14,10 +20,10 @@ const incomeService = new IncomeService();
  * - Authorization: Bearer <token> (required)
  * 
  * Query Parameters:
- * - startDate: ISO date string (optional) - filter entries from this date
- * - endDate: ISO date string (optional) - filter entries until this date
+ * - startDate: canonical YYYY-MM-DD string (optional) - filter entries from this date
+ * - endDate: canonical YYYY-MM-DD string (optional) - filter entries until this date
  * - restaurantStatus: "halal" | "non-halal" (optional) - filter by restaurant status
- * - paymentType: "cash" | "digital" | "both" (optional) - filter by payment type (currently informational)
+ * - paymentType: "cash" | "digital" | "both" (optional) - filter the matching set by payment type
  * 
  * Response:
  * - 200: { 
@@ -38,22 +44,12 @@ router.get(
   [
     query('startDate')
       .optional()
-      .isISO8601()
-      .withMessage('Start date must be a valid ISO 8601 date'),
+      .custom((value) => parseDateOnly(value))
+      .withMessage('Start date must be a canonical date in YYYY-MM-DD format'),
     query('endDate')
       .optional()
-      .isISO8601()
-      .withMessage('End date must be a valid ISO 8601 date')
-      .custom((value, { req }) => {
-        if (value && req.query?.startDate) {
-          const startDate = new Date(req.query.startDate as string);
-          const endDate = new Date(value);
-          if (endDate < startDate) {
-            throw new Error('End date must be after or equal to start date');
-          }
-        }
-        return true;
-      }),
+      .custom((value) => parseDateOnly(value))
+      .withMessage('End date must be a canonical date in YYYY-MM-DD format'),
     query('restaurantStatus')
       .optional()
       .isString()
@@ -83,33 +79,33 @@ router.get(
         return;
       }
 
-      // Extract query parameters
-      // Note: paymentType is accepted for API consistency but not applied below,
-      // since calculateTotals always returns both cash and digital totals.
-      const { startDate, endDate, restaurantStatus } = req.query as {
-        startDate?: string;
-        endDate?: string;
-        restaurantStatus?: string;
-        paymentType?: string;
+      let dateRange: ReturnType<typeof normalizeExplicitDateRange>;
+      try {
+        dateRange = normalizeExplicitDateRange(
+          req.query.startDate,
+          req.query.endDate,
+        );
+      } catch (error) {
+        res.status(400).json({
+          error: 'Validation failed',
+          details: [
+            error instanceof Error
+              ? error.message
+              : 'Invalid date range',
+          ],
+        });
+        return;
+      }
+
+      const filters: TotalsQuery = {
+        ...(dateRange && { dateRange }),
+        ...(req.query.restaurantStatus && {
+          restaurantStatus: req.query.restaurantStatus as RestaurantStatus,
+        }),
+        ...(req.query.paymentType && {
+          paymentType: req.query.paymentType as PaymentType,
+        }),
       };
-
-      // Build filters object
-      const filters: any = {};
-
-      if (startDate) {
-        filters.startDate = new Date(startDate as string);
-      }
-
-      if (endDate) {
-        filters.endDate = new Date(endDate as string);
-      }
-
-      if (restaurantStatus) {
-        filters.restaurantStatus = restaurantStatus as 'halal' | 'non-halal';
-      }
-
-      // Note: paymentType parameter is accepted for API consistency but not used
-      // in calculateTotals as it returns both cash and digital totals regardless
 
       // Calculate totals from service
       const totals = await incomeService.calculateTotals(
