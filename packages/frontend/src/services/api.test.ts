@@ -12,7 +12,8 @@ const jsonResponse = (body: unknown, status = 200): Response => new Response(
 
 describe('dashboard API contract', () => {
   const fetchMock = vi.fn<
-    (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+    [input: RequestInfo | URL, init?: RequestInit],
+    Promise<Response>
   >();
 
   beforeEach(() => {

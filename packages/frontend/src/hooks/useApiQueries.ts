@@ -20,11 +20,10 @@ import {
   deliveryEntriesApi,
   analyticsApi,
   autocompleteApi,
+  type DashboardFilterQuery,
+  type DeliveryEntriesQuery,
 } from '../services/api';
-import type {
-  DeliveryEntryFormData,
-  RestaurantStatus,
-} from '../types';
+import type { DeliveryEntryFormData } from '../types';
 
 // Query keys for cache management
 export const queryKeys = {
@@ -140,14 +139,7 @@ export function useLogout() {
 // Delivery Entries Hooks
 // ============================================
 
-export function useDeliveryEntries(filters?: {
-  startDate?: Date;
-  endDate?: Date;
-  restaurantStatus?: RestaurantStatus;
-  paymentType?: 'cash' | 'digital' | 'both';
-  limit?: number;
-  offset?: number;
-}) {
+export function useDeliveryEntries(filters?: DeliveryEntriesQuery) {
   const navigate = useNavigate();
   const { showToast } = useToast();
 
@@ -285,11 +277,7 @@ export function useDeleteDeliveryEntry() {
 // Analytics Hooks
 // ============================================
 
-export function useIncomeTotals(filters?: {
-  startDate?: Date;
-  endDate?: Date;
-  restaurantStatus?: RestaurantStatus;
-}) {
+export function useIncomeTotals(filters?: DashboardFilterQuery) {
   const navigate = useNavigate();
   const { showToast } = useToast();
 
