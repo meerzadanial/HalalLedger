@@ -1,0 +1,105 @@
+{
+  "pbtResults": {
+    "2.6 Write the property test for idempotent creation and one active request": {
+      "status": "passed",
+      "lastRunTimestamp": 1787508443379
+    },
+    "2.2 Write the property test for weekly boundaries": {
+      "status": "passed",
+      "lastRunTimestamp": 1787508448956
+    },
+    "2.3 Write the property test for monthly boundaries": {
+      "status": "passed",
+      "lastRunTimestamp": 1787508453871
+    },
+    "2.4 Write the property test for rejected reference dates": {
+      "status": "passed",
+      "lastRunTimestamp": 1787508460115
+    },
+    "3.2 Write the property test for exact report set filtering": {
+      "status": "passed",
+      "lastRunTimestamp": 1787508467531
+    },
+    "3.3 Write the property test for exact immutable snapshots": {
+      "status": "passed",
+      "lastRunTimestamp": 1787508485169
+    },
+    "4.2 Write the property test for CSV schema and detail bijection": {
+      "status": "passed",
+      "lastRunTimestamp": 1787508490581
+    },
+    "4.3 Write the property test for deterministic detail ordering": {
+      "status": "passed",
+      "lastRunTimestamp": 1787508497129
+    },
+    "4.4 Write the property test for entry money rendering": {
+      "status": "passed",
+      "lastRunTimestamp": 1787508503909
+    },
+    "4.5 Write the property test for summary folds": {
+      "status": "passed",
+      "lastRunTimestamp": 1787508508829
+    },
+    "4.6 Write the property test for canonical temporal formatting": {
+      "status": "passed",
+      "lastRunTimestamp": 1787508514407
+    },
+    "4.7 Write the property test for missing required cash failure": {
+      "status": "passed",
+      "lastRunTimestamp": 1787508525354
+    },
+    "4.8 Write the property test for UTF-8 CSV round trips": {
+      "status": "passed",
+      "lastRunTimestamp": 1787508531706
+    },
+    "4.9 Write the property test for formula neutralization": {
+      "status": "passed",
+      "lastRunTimestamp": 1787508535755
+    },
+    "4.10 Write the property test for attachment identity and content closure": {
+      "status": "passed",
+      "lastRunTimestamp": 1787508543271
+    },
+    "5.2 Write the property test for provider-command agreement": {
+      "status": "passed",
+      "lastRunTimestamp": 1787508553854
+    },
+    "5.5 Write the property test for idempotent acceptance": {
+      "status": "passed",
+      "lastRunTimestamp": 1787508564594
+    },
+    "5.6 Write the property test for terminal-safe delivery transitions": {
+      "status": "passed",
+      "lastRunTimestamp": 1787508569974
+    },
+    "6.3 Write the property test for one logical email across retries": {
+      "status": "passed",
+      "lastRunTimestamp": 1787508574571
+    },
+    "6.5 Write the property test for the exact delivery deadline": {
+      "status": "passed",
+      "lastRunTimestamp": 1787508580007
+    },
+    "2.7 Write the property test for invalid command persistence isolation": {
+      "status": "passed",
+      "lastRunTimestamp": 1787508588142
+    },
+    "7.3 Write the property test for confirmed-success presentation": {
+      "status": "passed",
+      "lastRunTimestamp": 1787508600370
+    },
+    "2.8 Write the property test for immutable retries": {
+      "status": "passed",
+      "lastRunTimestamp": 1787508605694
+    },
+    "6.6 Write the property test for the UTF-8 attachment size gate": {
+      "status": "passed",
+      "lastRunTimestamp": 1787508610114
+    },
+    "8.2 Write the property test for secret-free public errors": {
+      "status": "passed",
+      "lastRunTimestamp": 1787508614580
+    }
+  },
+  "executionHistory": {}
+}

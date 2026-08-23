@@ -6,24 +6,37 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "dev:worker": "tsx watch src/reportWorkerMain.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "vitest run",
+    "start:worker": "node dist/reportWorkerMain.js",
+    "test": "vitest run src",
     "test:watch": "vitest",
+    "test:report": "vitest run src/reporting",
+    "test:integration": "tsx scripts/run-report-integration.ts",
+    "test:worker": "vitest run worker",
+    "test:provider-contract": "vitest run src/reporting/providerAdapterContract.test.ts",
+    "test:provider-contract:staging": "RUN_RESEND_SANDBOX_CONTRACT=true RESEND_SANDBOX_STAGE=staging vitest run src/reporting/providerAdapterContract.test.ts",
+    "test:ci:targeted": "vitest run src/reporting src/routes/reports.test.ts src/routes/resendWebhook.test.ts",
     "lint": "eslint src --ext .ts",
     "db:generate": "prisma generate",
+    "db:validate": "prisma validate",
+    "db:migrate:deploy": "prisma migrate deploy",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio"
   },
   "dependencies": {
-    "@prisma/client": "^5.8.1",
+    "@js-temporal/polyfill": "0.5.1",
+    "@prisma/client": "^5.22.0",
     "bcrypt": "^5.1.1",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "express-validator": "^7.0.1",
     "jsonwebtoken": "^9.0.2",
+    "resend": "6.0.2",
+    "vite": "8.2.1",
     "zod": "^3.22.4"
   },
   "devDependencies": {
@@ -33,10 +46,12 @@
     "@types/jsonwebtoken": "^9.0.5",
     "@types/node": "^20.11.5",
     "@types/supertest": "^7.2.1",
-    "prisma": "^5.8.1",
+    "csv-parse": "6.1.0",
+    "fast-check": "4.9.0",
+    "prisma": "5.22.0",
     "supertest": "^7.2.2",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3",
-    "vitest": "^1.2.1"
+    "vitest": "^3.2.7"
   }
 }

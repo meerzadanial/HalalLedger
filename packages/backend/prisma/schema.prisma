@@ -9,17 +9,42 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum ReportType {
+  WEEKLY
+  MONTHLY
+}
+
+enum ReportStatus {
+  PENDING
+  PROCESSING
+  EMAIL_SUBMITTED
+  EMAIL_ACCEPTED
+  SENT
+  FAILED
+}
+
+enum ReportFailureStage {
+  DATA_RETRIEVAL
+  SNAPSHOT
+  CSV_GENERATION
+  REPORT_SIZE
+  EMAIL_SUBMISSION
+  UNEXPECTED
+}
+
 model User {
-  id              String          @id @default(uuid())
-  email           String          @unique
-  passwordHash    String          @map("password_hash")
-  createdAt       DateTime        @default(now()) @map("created_at")
-  updatedAt       DateTime        @updatedAt @map("updated_at")
-  
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  timeZone     String   @default("Asia/Kuala_Lumpur") @map("time_zone")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
   deliveryEntries DeliveryEntry[]
   sessions        SessionToken[]
   auditLogs       AuditLog[]
-  
+  reportRequests  ReportRequest[]
+
   @@map("users")
 }
 
@@ -29,9 +54,9 @@ model SessionToken {
   tokenHash String   @unique @map("token_hash")
   expiresAt DateTime @map("expires_at")
   createdAt DateTime @default(now()) @map("created_at")
-  
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
   @@index([expiresAt])
   @@map("session_tokens")
@@ -45,9 +70,9 @@ model AuditLog {
   entityId   String   @map("entity_id")
   changes    Json?
   createdAt  DateTime @default(now()) @map("created_at")
-  
-  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
   @@index([userId])
   @@index([createdAt])
   @@map("audit_logs")
@@ -65,13 +90,157 @@ model DeliveryEntry {
   timestamp        DateTime @default(now())
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
-  
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
   @@index([entryDate])
   @@index([restaurantStatus])
   @@index([createdAt])
+  @@index([userId, entryDate])
   @@index([userId, entryDate, restaurantName, fareAmount])
   @@map("delivery_entries")
+}
+
+model ReportRequest {
+  id              String              @id @default(uuid())
+  userId          String              @map("user_id")
+  clientRequestId String              @map("client_request_id")
+  retryOfId       String?             @map("retry_of_id")
+  reportType      ReportType          @map("report_type")
+  referenceDate   DateTime            @map("reference_date") @db.Date
+  periodStart     DateTime            @map("period_start") @db.Date
+  periodEnd       DateTime            @map("period_end") @db.Date
+  accountEmail    String              @map("account_email")
+  timeZone        String              @map("time_zone")
+  status          ReportStatus        @default(PENDING)
+  progressStage   String              @map("progress_stage")
+  failureStage    ReportFailureStage? @map("failure_stage")
+  failureCode     String?             @map("failure_code")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+  sentAt          DateTime?           @map("sent_at")
+
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  retryOf    ReportRequest?    @relation("ReportRetries", fields: [retryOfId, userId], references: [id, userId], onDelete: NoAction, onUpdate: NoAction)
+  retries    ReportRequest[]   @relation("ReportRetries")
+  snapshot   ReportSnapshot?
+  attachment ReportAttachment?
+  delivery   ReportDelivery?
+  job        ReportJob?
+
+  @@unique([userId, clientRequestId])
+  @@unique([id, userId])
+  @@index([userId, createdAt])
+  @@index([retryOfId])
+  @@map("report_requests")
+}
+
+model ReportSnapshot {
+  id                  String   @id @default(uuid())
+  reportRequestId     String   @unique @map("report_request_id")
+  recordCount         Int      @map("record_count")
+  digitalIncomeTotal  Decimal  @map("digital_income_total") @db.Decimal(14, 2)
+  cashIncomeTotal     Decimal  @map("cash_income_total") @db.Decimal(14, 2)
+  halalIncomeTotal    Decimal  @map("halal_income_total") @db.Decimal(14, 2)
+  nonHalalIncomeTotal Decimal  @map("non_halal_income_total") @db.Decimal(14, 2)
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  reportRequest ReportRequest         @relation(fields: [reportRequestId], references: [id], onDelete: Cascade)
+  entries       ReportSnapshotEntry[]
+
+  @@map("report_snapshots")
+}
+
+model ReportSnapshotEntry {
+  id               String   @id @default(uuid())
+  snapshotId       String   @map("snapshot_id")
+  sourceEntryId    String   @map("source_entry_id")
+  restaurantName   String   @map("restaurant_name")
+  restaurantStatus String   @map("restaurant_status")
+  fareAmount       Decimal  @map("fare_amount") @db.Decimal(12, 2)
+  hasCashOrder     Boolean  @map("has_cash_order")
+  cashAmount       Decimal? @map("cash_amount") @db.Decimal(12, 2)
+  entryDate        DateTime @map("entry_date") @db.Date
+  entryTimestamp   DateTime @map("entry_timestamp")
+
+  snapshot ReportSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@unique([snapshotId, sourceEntryId])
+  @@index([snapshotId, entryDate, entryTimestamp, sourceEntryId])
+  @@map("report_snapshot_entries")
+}
+
+model ReportAttachment {
+  id              String   @id @default(uuid())
+  reportRequestId String   @unique @map("report_request_id")
+  content         Bytes
+  byteSize        Int      @map("byte_size")
+  sha256          String
+  filename        String
+  mediaType       String   @map("media_type")
+  generatedAt     DateTime @map("generated_at")
+
+  reportRequest ReportRequest @relation(fields: [reportRequestId], references: [id], onDelete: Cascade)
+
+  @@map("report_attachments")
+}
+
+model ReportDelivery {
+  id                 String    @id @default(uuid())
+  reportRequestId    String    @unique @map("report_request_id")
+  idempotencyKey     String    @unique @map("idempotency_key")
+  providerMessageId  String?   @unique @map("provider_message_id")
+  submittedAt        DateTime? @map("submitted_at")
+  acceptedAt         DateTime? @map("accepted_at")
+  deliveryDeadlineAt DateTime? @map("delivery_deadline_at")
+  confirmedAt        DateTime? @map("confirmed_at")
+
+  reportRequest ReportRequest @relation(fields: [reportRequestId], references: [id], onDelete: Cascade)
+
+  @@index([deliveryDeadlineAt])
+  @@map("report_deliveries")
+}
+
+model ProviderEvent {
+  id                String   @id @default(uuid())
+  providerEventId   String   @unique @map("provider_event_id")
+  providerMessageId String   @map("provider_message_id")
+  eventType         String   @map("event_type")
+  occurredAt        DateTime @map("occurred_at")
+  receivedAt        DateTime @default(now()) @map("received_at")
+  payloadDigest     String   @map("payload_digest")
+
+  @@index([providerMessageId])
+  @@map("provider_events")
+}
+
+model ReportJob {
+  id              String    @id @default(uuid())
+  reportRequestId String    @unique @map("report_request_id")
+  availableAt     DateTime  @default(now()) @map("available_at")
+  leaseOwner      String?   @map("lease_owner")
+  leaseExpiresAt  DateTime? @map("lease_expires_at")
+  attemptCount    Int       @default(0) @map("attempt_count")
+  maxAttempts     Int       @default(8) @map("max_attempts")
+  lastErrorCode   String?   @map("last_error_code")
+  completedAt     DateTime? @map("completed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  reportRequest ReportRequest @relation(fields: [reportRequestId], references: [id], onDelete: Cascade)
+
+  @@index([completedAt, availableAt])
+  @@index([leaseExpiresAt])
+  @@map("report_jobs")
+}
+
+model ReportWorkerHeartbeat {
+  workerId        String    @id @map("worker_id")
+  startedAt       DateTime  @map("started_at")
+  lastHeartbeatAt DateTime  @map("last_heartbeat_at")
+  stoppedAt       DateTime? @map("stopped_at")
+
+  @@index([lastHeartbeatAt])
+  @@map("report_worker_heartbeats")
 }

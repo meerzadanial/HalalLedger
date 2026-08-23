@@ -1,16 +1,23 @@
 import dotenv from 'dotenv';
 import express from 'express';
 import cors from 'cors';
-import { initializeDatabase, closeDatabase } from './database';
+import { initializeDatabase, closeDatabase, getDatabaseClient } from './database';
+import {
+  ReportReadinessService,
+  loadReportOperationalConfig,
+} from './reporting';
 import authRoutes from './routes/auth';
 import incomeRoutes from './routes/income';
 import analyticsRoutes from './routes/analytics';
+import reportRoutes from './routes/reports';
+import resendWebhookRoutes from './routes/resendWebhook';
 
 // Load environment variables
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const reportOperationalConfig = loadReportOperationalConfig();
 
 // Middleware
 app.use(
@@ -19,12 +26,35 @@ app.use(
     credentials: true,
   })
 );
+app.use('/api/webhooks/resend', resendWebhookRoutes);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Health check endpoint
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Dependency readiness contains status names only, never configuration values.
+app.get('/ready', async (_req, res) => {
+  try {
+    const readiness = await new ReportReadinessService(
+      getDatabaseClient().getClient(),
+      reportOperationalConfig,
+    ).check();
+    res.status(readiness.status === 'ready' ? 200 : 503).json(readiness);
+  } catch {
+    res.status(503).json({
+      status: 'not_ready',
+      checks: {
+        database: 'failed',
+        migrations: 'failed',
+        provider: reportOperationalConfig.provider.configured ? 'ok' : 'failed',
+        workerHeartbeat: 'failed',
+      },
+      checkedAt: new Date().toISOString(),
+    });
+  }
 });
 
 // API routes placeholder
@@ -40,6 +70,9 @@ app.use('/api/income-entries', incomeRoutes);
 
 // Analytics routes
 app.use('/api/analytics', analyticsRoutes);
+
+// Authenticated report routes
+app.use('/api', reportRoutes);
 
 // 404 handler
 app.use((_req, res) => {

@@ -448,10 +448,262 @@ export const autocompleteApi = {
   },
 };
 
+// ============================================
+// Bulk report API
+// ============================================
+
+export type ReportDateString = string;
+export type ReportUtcTimestampString = string;
+export type ReportType = 'weekly' | 'monthly';
+export type ReportStatus =
+  | 'pending'
+  | 'processing'
+  | 'email_submitted'
+  | 'email_accepted'
+  | 'sent'
+  | 'failed';
+export type ReportProgressStage =
+  | 'data_retrieval'
+  | 'snapshot'
+  | 'csv_generation'
+  | 'email_submission'
+  | 'delivery_wait';
+export type ReportFailureStage =
+  | 'data_retrieval'
+  | 'snapshot'
+  | 'csv_generation'
+  | 'report_size'
+  | 'email_submission'
+  | 'unexpected';
+export type ReportFieldName =
+  | 'reportType'
+  | 'referenceDate'
+  | 'clientRequestId'
+  | 'reportRequestId';
+export type ReportFieldErrors = Readonly<Partial<Record<ReportFieldName, string>>>;
+
+export interface ReportPeriodDto {
+  readonly startDate: ReportDateString;
+  readonly endDate: ReportDateString;
+  readonly inclusive: true;
+}
+
+export interface ResolveReportPeriodDto {
+  readonly reportType: ReportType;
+  readonly referenceDate: ReportDateString;
+  readonly period: ReportPeriodDto;
+  readonly accountEmail: string;
+  readonly timeZone: string;
+}
+
+export interface PublicReportFailureDto {
+  readonly code: string;
+  readonly stage?: ReportFailureStage;
+  readonly message: string;
+  readonly fieldErrors?: ReportFieldErrors;
+}
+
+export interface ReportRequestDto {
+  readonly id: string;
+  readonly reportType: ReportType;
+  readonly referenceDate: ReportDateString;
+  readonly period: ReportPeriodDto;
+  readonly accountEmail: string;
+  readonly status: ReportStatus;
+  readonly progressStage: ReportProgressStage;
+  readonly createdAt: ReportUtcTimestampString;
+  readonly providerAcceptedAt: ReportUtcTimestampString | null;
+  readonly sentAt: ReportUtcTimestampString | null;
+  readonly failure: PublicReportFailureDto | null;
+  readonly canRetry: boolean;
+}
+
+export interface CreateReportRequestInput {
+  readonly reportType: ReportType;
+  readonly referenceDate: ReportDateString;
+}
+
+interface ReportErrorBody {
+  readonly code?: unknown;
+  readonly stage?: unknown;
+  readonly message?: unknown;
+  readonly fieldErrors?: unknown;
+  readonly activeRequest?: unknown;
+  readonly correlationId?: unknown;
+}
+
+export class ReportApiError extends Error {
+  readonly status: number;
+  readonly code: string;
+  readonly stage?: ReportFailureStage;
+  readonly fieldErrors?: ReportFieldErrors;
+  readonly activeRequest?: ReportRequestDto;
+  readonly correlationId?: string;
+
+  constructor(options: {
+    status: number;
+    code: string;
+    message: string;
+    stage?: ReportFailureStage;
+    fieldErrors?: ReportFieldErrors;
+    activeRequest?: ReportRequestDto;
+    correlationId?: string;
+  }) {
+    super(options.message);
+    this.name = 'ReportApiError';
+    this.status = options.status;
+    this.code = options.code;
+    this.stage = options.stage;
+    this.fieldErrors = options.fieldErrors;
+    this.activeRequest = options.activeRequest;
+    this.correlationId = options.correlationId;
+  }
+}
+
+const REPORT_FAILURE_STAGES: readonly ReportFailureStage[] = [
+  'data_retrieval',
+  'snapshot',
+  'csv_generation',
+  'report_size',
+  'email_submission',
+  'unexpected',
+];
+const REPORT_FIELD_NAMES: readonly ReportFieldName[] = [
+  'reportType',
+  'referenceDate',
+  'clientRequestId',
+  'reportRequestId',
+];
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const toFailureStage = (value: unknown): ReportFailureStage | undefined =>
+  typeof value === 'string' && REPORT_FAILURE_STAGES.includes(value as ReportFailureStage)
+    ? value as ReportFailureStage
+    : undefined;
+
+const toFieldErrors = (value: unknown): ReportFieldErrors | undefined => {
+  if (!isRecord(value)) return undefined;
+
+  const fieldErrors: Partial<Record<ReportFieldName, string>> = {};
+  for (const fieldName of REPORT_FIELD_NAMES) {
+    const message = value[fieldName];
+    if (typeof message === 'string') fieldErrors[fieldName] = message;
+  }
+  return Object.keys(fieldErrors).length > 0 ? fieldErrors : undefined;
+};
+
+const toReportApiError = async (response: Response): Promise<ReportApiError> => {
+  let body: ReportErrorBody = {};
+  try {
+    const parsed: unknown = await response.json();
+    if (isRecord(parsed)) body = parsed;
+  } catch {
+    // Non-JSON failures use fixed client-safe fallbacks below.
+  }
+
+  return new ReportApiError({
+    status: response.status,
+    code: typeof body.code === 'string' ? body.code : 'report_api_error',
+    message: typeof body.message === 'string'
+      ? body.message
+      : 'The report request could not be completed.',
+    stage: toFailureStage(body.stage),
+    fieldErrors: toFieldErrors(body.fieldErrors),
+    activeRequest: isRecord(body.activeRequest)
+      ? body.activeRequest as unknown as ReportRequestDto
+      : undefined,
+    correlationId: typeof body.correlationId === 'string' ? body.correlationId : undefined,
+  });
+};
+
+const reportFetch = async (
+  path: string,
+  options: RequestInit,
+  retrySafe: boolean,
+): Promise<Response> => {
+  const url = `${API_BASE_URL}${path}`;
+  const response = retrySafe
+    ? await fetchWithRetry(url, options)
+    : await fetch(url, options);
+  if (!response.ok) throw await toReportApiError(response);
+  return response;
+};
+
+/** Creates the idempotency key once per user POST action. */
+export const createReportClientRequestId = (): string => crypto.randomUUID();
+
+export const reportsApi = {
+  resolve: async (
+    reportType: ReportType,
+    referenceDate: ReportDateString,
+  ): Promise<ResolveReportPeriodDto> => {
+    const params = new URLSearchParams({ reportType, referenceDate });
+    const response = await reportFetch(
+      `/api/report-periods/resolve?${params.toString()}`,
+      { method: 'GET', headers: getAuthHeaders() },
+      true,
+    );
+    return await response.json() as ResolveReportPeriodDto;
+  },
+
+  create: async (input: CreateReportRequestInput): Promise<ReportRequestDto> => {
+    const clientRequestId = createReportClientRequestId();
+    const response = await reportFetch(
+      '/api/report-requests',
+      {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          reportType: input.reportType,
+          referenceDate: input.referenceDate,
+          clientRequestId,
+        }),
+      },
+      false,
+    );
+    return await response.json() as ReportRequestDto;
+  },
+
+  active: async (): Promise<ReportRequestDto | null> => {
+    const response = await reportFetch(
+      '/api/report-requests/active',
+      { method: 'GET', headers: getAuthHeaders() },
+      true,
+    );
+    return response.status === 204 ? null : await response.json() as ReportRequestDto;
+  },
+
+  status: async (reportRequestId: string): Promise<ReportRequestDto> => {
+    const response = await reportFetch(
+      `/api/report-requests/${encodeURIComponent(reportRequestId)}`,
+      { method: 'GET', headers: getAuthHeaders() },
+      true,
+    );
+    return await response.json() as ReportRequestDto;
+  },
+
+  retry: async (reportRequestId: string): Promise<ReportRequestDto> => {
+    const clientRequestId = createReportClientRequestId();
+    const response = await reportFetch(
+      `/api/report-requests/${encodeURIComponent(reportRequestId)}/retries`,
+      {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ clientRequestId }),
+      },
+      false,
+    );
+    return await response.json() as ReportRequestDto;
+  },
+};
+
 // Export all APIs as a single object
 export default {
   auth: authApi,
   deliveryEntries: deliveryEntriesApi,
   analytics: analyticsApi,
   autocomplete: autocompleteApi,
+  reports: reportsApi,
 };

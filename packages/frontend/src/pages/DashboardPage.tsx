@@ -15,6 +15,7 @@ import {
 import type { DeliveryEntry, IncomeTotals } from '../types';
 import { formatDate, formatDateTime, formatTimestamp } from '../utils/dateFormat';
 import { showSuccess, showError } from '../utils/toast';
+import BulkReportPanel from '../components/BulkReportPanel';
 import FilterPanel, {
   type AppliedFilterResult,
   type ClearedFilterResult,
@@ -76,7 +77,7 @@ const isUnauthorizedError = (error: unknown): boolean => {
  */
 export default function DashboardPage() {
   const navigate = useNavigate();
-  const { logout: authLogout } = useAuth();
+  const { user, logout: authLogout } = useAuth();
   const [dashboardView, setDashboardView] = useState<DashboardViewState>({
     data: { kind: 'loading' },
     refreshError: null,
@@ -483,8 +484,8 @@ export default function DashboardPage() {
 
           {readyData && (
             <section className="dashboard-entries bg-white shadow overflow-hidden sm:rounded-lg" aria-labelledby="recent-deliveries-heading">
-          <div className="dashboard-entries__header px-4 py-5 sm:px-6 flex justify-between items-center">
-            <div>
+          <div className="dashboard-entries__header grid min-w-0 grid-cols-1 items-center gap-3 px-4 py-5 sm:px-6 md:grid-cols-[minmax(0,1fr)_auto_auto]">
+            <div className="min-w-0 row-start-1 md:col-start-1">
               <h2 id="recent-deliveries-heading" className="text-lg leading-6 font-medium text-gray-900">
                 Recent Deliveries
               </h2>
@@ -494,12 +495,17 @@ export default function DashboardPage() {
                 </p>
               )}
             </div>
-            <button
-              onClick={() => navigate('/entry')}
-              className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md"
-            >
-              New Entry
-            </button>
+            <BulkReportPanel
+              accountEmail={user?.email ?? ''}
+              adjacentAction={(
+                <button
+                  onClick={() => navigate('/entry')}
+                  className="row-start-3 min-h-[44px] w-full rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 md:col-start-3 md:row-start-1 md:w-auto"
+                >
+                  New Entry
+                </button>
+              )}
+            />
           </div>
           <div className="border-t border-gray-200">
             {entries.length === 0 ? (

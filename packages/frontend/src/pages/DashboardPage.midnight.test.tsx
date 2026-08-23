@@ -13,6 +13,7 @@ vi.mock('react-router-dom', async (importOriginal) => ({
 vi.mock('../hooks/useAuth', () => ({
   useAuth: () => ({ user: { email: 'driver@example.com' }, logout: vi.fn() }),
 }));
+vi.mock('../components/BulkReportPanel', () => ({ default: () => null }));
 vi.mock('../services/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../services/api')>();
   return {
@@ -129,9 +130,10 @@ describe('DashboardPage Malaysian midnight integration', () => {
 
     expect(deliveryEntriesApi.getAll).toHaveBeenCalledTimes(1);
     expect(analyticsApi.getTotals).toHaveBeenCalledTimes(5);
-    expect(screen.getByRole('status')).toHaveTextContent(
+    const refreshWarning = screen.getByText(
       'Unable to refresh daily totals: totals unavailable',
     );
+    expect(refreshWarning.closest('[role="status"]')).toBeInTheDocument();
     expect(screen.getByText('Preserved Restaurant')).toBeInTheDocument();
     expectHalalTotal(10);
   });

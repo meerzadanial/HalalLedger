@@ -19,6 +19,14 @@ vi.mock('../services/api', () => ({
   analyticsApi: {
     getTotals: vi.fn(),
   },
+  reportsApi: {
+    active: vi.fn().mockResolvedValue(null),
+    resolve: vi.fn(),
+    create: vi.fn(),
+    status: vi.fn(),
+    retry: vi.fn(),
+  },
+  ReportApiError: class ReportApiError extends Error {},
 }));
 
 // Mock useNavigate

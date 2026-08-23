@@ -6,6 +6,9 @@ node_modules/
 # Testing
 coverage/
 *.lcov
+packages/frontend/test-results/
+packages/frontend/playwright-report/
+packages/frontend/.playwright-cache/
 
 # Production
 dist/

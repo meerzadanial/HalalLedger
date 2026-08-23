@@ -1,0 +1,189 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16.4-alpine
+        env:
+          POSTGRES_DB: halalornot_ci
+          POSTGRES_USER: halalornot_ci
+          POSTGRES_PASSWORD: halalornot_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U halalornot_ci -d halalornot_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      CI: true
+      NODE_ENV: test
+      DATABASE_URL: postgresql://halalornot_ci:halalornot_ci@localhost:5432/halalornot_ci?schema=public
+      REPORT_INTEGRATION_DATABASE_URL: postgresql://halalornot_ci:halalornot_ci@localhost:5432/halalornot_ci?schema=public
+      JWT_SECRET: ci-only-not-a-production-secret
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.18.1'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies from lockfile
+        run: npm ci
+
+      - name: Validate Prisma schema
+        run: npm run db:validate --workspace=packages/backend
+
+      - name: Generate Prisma client
+        run: npm run db:generate --workspace=packages/backend
+
+      - name: Apply PostgreSQL migrations
+        run: npm run db:migrate:deploy --workspace=packages/backend
+
+      - name: Verify report migrations and PostgreSQL constraints
+        run: npm run test:integration --workspace=packages/backend
+
+      - name: Run targeted backend and frontend suites
+        run: npm run test:targeted
+
+      - name: Run full backend Vitest suite
+        run: npm run test:backend
+
+      - name: Run full frontend Vitest suite
+        run: npm run test:frontend
+
+      - name: Run exactly 25 property tests
+        run: npm run test:properties
+
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CI: true
+      NODE_ENV: test
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/schema_only
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.18.1'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies from lockfile
+        run: npm ci
+
+      - name: Generate Prisma client for type checks
+        run: npm run db:generate --workspace=packages/backend
+
+      - name: Lint workspaces
+        run: npm run lint
+
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CI: true
+      NODE_ENV: test
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/schema_only
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.18.1'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies from lockfile
+        run: npm ci
+
+      - name: Generate Prisma client for type checks
+        run: npm run db:generate --workspace=packages/backend
+
+      - name: Build workspaces
+        run: npm run build
+
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CI: true
+      NODE_ENV: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.18.1'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies from lockfile
+        run: npm ci
+
+      - name: Cache pinned Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install pinned Playwright Chromium and system dependencies
+        run: npx --no-install playwright install --with-deps chromium
+
+      - name: Run Playwright browser tests
+        run: npm run test:browser --workspace=packages/frontend
+
+      - name: Remove traces containing credentials or CSV payloads
+        if: failure()
+        shell: bash
+        run: |
+          shopt -s globstar nullglob
+          for trace in packages/frontend/test-results/**/trace.zip; do
+            if unzip -p "$trace" | LC_ALL=C grep -aEq \
+              'Authorization: Bearer|RESEND_API_KEY|RESEND_WEBHOOK_SECRET|JWT_SECRET|text/csv|Report Type,(weekly|monthly)|Entry Date,Delivery Entry Timestamp'; then
+              rm -f "$trace"
+            fi
+          done
+
+      - name: Upload failure traces and screenshots only
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-failure-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            packages/frontend/test-results/**/*.zip
+            packages/frontend/test-results/**/*.png
+            packages/frontend/playwright-report/**/*.png
+            !packages/frontend/**/*.csv
+            !packages/frontend/**/.env*
+          if-no-files-found: ignore
+          include-hidden-files: false
+          retention-days: 7

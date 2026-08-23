@@ -13,6 +13,7 @@ vi.mock('react-router-dom', async (importOriginal) => ({
 vi.mock('../hooks/useAuth', () => ({
   useAuth: () => ({ user: { email: 'driver@example.com' }, logout: vi.fn() }),
 }));
+vi.mock('../components/BulkReportPanel', () => ({ default: () => null }));
 vi.mock('../services/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../services/api')>();
   return {
