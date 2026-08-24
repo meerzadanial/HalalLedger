@@ -117,6 +117,7 @@ export default function BulkReportPanel({
   api = reportsApi,
   adjacentAction,
 }: BulkReportPanelProps) {
+  const productionDisabled = import.meta.env.PROD;
   const [expanded, setExpanded] = useState(false);
   const [reportType, setReportType] = useState<ReportType>('weekly');
   const [referenceDate, setReferenceDate] = useState('');
@@ -341,9 +342,12 @@ export default function BulkReportPanel({
       <button
         type="button"
         onClick={handleToggle}
-        aria-expanded={expanded}
+        disabled={productionDisabled}
+        aria-expanded={productionDisabled ? false : expanded}
         aria-controls="bulk-report-content"
-        className="bulk-report-panel__action row-start-2 inline-flex min-h-[44px] min-w-[44px] w-full min-w-0 items-center justify-center gap-2 rounded-md border border-indigo-600 bg-white px-4 py-2 text-sm font-medium text-indigo-700 shadow-sm hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 md:col-start-2 md:row-start-1 md:w-auto"
+        className={productionDisabled
+          ? 'bulk-report-panel__action row-start-2 inline-flex min-h-[44px] min-w-[44px] w-full min-w-0 cursor-not-allowed items-center justify-center gap-2 rounded-md border border-gray-300 bg-gray-100 px-4 py-2 text-sm font-medium text-gray-500 shadow-sm md:col-start-2 md:row-start-1 md:w-auto'
+          : 'bulk-report-panel__action row-start-2 inline-flex min-h-[44px] min-w-[44px] w-full min-w-0 items-center justify-center gap-2 rounded-md border border-indigo-600 bg-white px-4 py-2 text-sm font-medium text-indigo-700 shadow-sm hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 md:col-start-2 md:row-start-1 md:w-auto'}
       >
         <span id="bulk-report-heading" className="min-w-0 break-words">Bulk Print / Email CSV</span>
         <span aria-hidden="true" className="shrink-0 text-lg leading-none">{expanded ? '−' : '+'}</span>
@@ -351,7 +355,7 @@ export default function BulkReportPanel({
 
       {adjacentAction}
 
-      {expanded && (
+      {expanded && !productionDisabled && (
         <section
           id="bulk-report-content"
           className="bulk-report-panel col-span-full row-start-4 min-w-0 rounded-lg border border-gray-200 bg-gray-50 px-4 py-5 md:row-start-2 sm:px-6"

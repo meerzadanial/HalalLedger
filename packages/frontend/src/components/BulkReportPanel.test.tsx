@@ -203,6 +203,82 @@ describe('BulkReportPanel', () => {
   });
 });
 
+describe('BulkReportPanel build-mode availability', () => {
+  beforeEach(() => {
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'visible',
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('keeps the production action visible but natively disabled, collapsed, grey, and inert', async () => {
+    vi.stubEnv('PROD', true);
+    const api = createApi();
+    const user = userEvent.setup();
+
+    render(<BulkReportPanel accountEmail="driver@example.com" api={api} />);
+
+    const action = screen.getByRole('button', { name: 'Bulk Print / Email CSV' });
+    expect(action.tagName).toBe('BUTTON');
+    expect(action).toBeVisible();
+    expect(action).toBeDisabled();
+    expect(action).toHaveAttribute('aria-expanded', 'false');
+    expect(action).toHaveClass('border-gray-300', 'bg-gray-100', 'text-gray-500', 'cursor-not-allowed');
+    expect(action.className).not.toContain('indigo');
+    expect(action.className).not.toContain('hover:');
+    expect(screen.queryByRole('region', { name: 'Bulk Print / Email CSV' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Report reference date')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Email CSV report' })).not.toBeInTheDocument();
+
+    await waitFor(() => expect(api.active).toHaveBeenCalledTimes(1));
+    await user.click(action);
+    fireEvent.keyDown(action, { key: 'Enter', code: 'Enter' });
+    fireEvent.keyUp(action, { key: 'Enter', code: 'Enter' });
+    fireEvent.keyDown(action, { key: ' ', code: 'Space' });
+    fireEvent.keyUp(action, { key: ' ', code: 'Space' });
+
+    expect(action).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('region', { name: 'Bulk Print / Email CSV' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Report reference date')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Email CSV report' })).not.toBeInTheDocument();
+    expect(api.active).toHaveBeenCalledTimes(1);
+    expect(api.resolve).not.toHaveBeenCalled();
+    expect(api.create).not.toHaveBeenCalled();
+    expect(api.status).not.toHaveBeenCalled();
+    expect(api.retry).not.toHaveBeenCalled();
+  });
+
+  it('preserves the enabled indigo action and unchanged panel expansion outside production', async () => {
+    vi.stubEnv('PROD', false);
+    const api = createApi();
+    const user = userEvent.setup();
+
+    render(<BulkReportPanel accountEmail="driver@example.com" api={api} />);
+
+    const action = screen.getByRole('button', { name: 'Bulk Print / Email CSV' });
+    expect(action).toBeEnabled();
+    expect(action).toHaveAttribute('aria-expanded', 'false');
+    expect(action).toHaveClass('border-indigo-600', 'text-indigo-700', 'hover:bg-indigo-50');
+    expect(action.className).not.toContain('gray');
+
+    await user.click(action);
+
+    expect(action).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('region', { name: 'Bulk Print / Email CSV' })).toBeInTheDocument();
+    expect(screen.getAllByRole('radio')).toHaveLength(2);
+    expect(screen.getByRole('radio', { name: 'Weekly' })).toHaveFocus();
+    expect(screen.getByRole('radio', { name: 'Monthly' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Report reference date')).toHaveAttribute('type', 'date');
+    expect(screen.getByRole('button', { name: 'Email CSV report' })).toBeInTheDocument();
+  });
+});
+
 describe('BulkReportPanel task 7.4 accessibility and lifecycle coverage', () => {
   beforeEach(() => {
     Object.defineProperty(document, 'visibilityState', {
