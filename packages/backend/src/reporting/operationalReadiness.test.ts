@@ -22,6 +22,7 @@ const config = loadReportOperationalConfig({
 function readinessHarness(
   heartbeatCount: number,
   operationalConfig = config,
+  environment: Readonly<Record<string, string | undefined>> = { REPORT_WORKER_ENABLED: "true" },
 ) {
   const queryRaw = vi.fn()
     .mockResolvedValueOnce([{ one: 1 }])
@@ -34,7 +35,7 @@ function readinessHarness(
   return {
     queryRaw,
     heartbeat,
-    service: new ReportReadinessService(prisma, operationalConfig, clock),
+    service: new ReportReadinessService(prisma, operationalConfig, clock, environment),
   };
 }
 
@@ -80,6 +81,7 @@ describe("report operational readiness", () => {
         { $queryRaw: queryRaw, reportWorkerHeartbeat } as unknown as PrismaClient,
         config,
         clock,
+        { REPORT_WORKER_ENABLED: "true" },
       );
       return service.check();
     };
@@ -90,19 +92,23 @@ describe("report operational readiness", () => {
       .toMatchObject({ status: "not_ready", checks: { workerHeartbeat: "failed" } });
   });
 
-  it("lets the API probe run without worker-only config and reports unavailable dependencies", async () => {
+  it("skips provider and worker heartbeat probes when the worker flag is absent or false", async () => {
     const apiConfig = loadReportOperationalConfig({});
-    const { service } = readinessHarness(0, apiConfig);
 
-    await expect(service.check()).resolves.toMatchObject({
-      status: "not_ready",
-      checks: {
-        database: "ok",
-        migrations: "ok",
-        provider: "failed",
-        workerHeartbeat: "failed",
-      },
-    });
+    for (const environment of [{}, { REPORT_WORKER_ENABLED: "false" }]) {
+      const { service, heartbeat } = readinessHarness(0, apiConfig, environment);
+
+      await expect(service.check()).resolves.toMatchObject({
+        status: "ready",
+        checks: {
+          database: "ok",
+          migrations: "ok",
+          provider: "ok",
+          workerHeartbeat: "ok",
+        },
+      });
+      expect(heartbeat.count).not.toHaveBeenCalled();
+    }
   });
 
   it("reports provider configuration presence without exposing configured values", async () => {

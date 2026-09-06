@@ -53,16 +53,21 @@ export class ReportReadinessService {
     private readonly prisma: PrismaClient,
     private readonly config: ReportOperationalConfig,
     private readonly clock: Clock = new SystemClock(),
-  ) {}
+    environment: Readonly<Record<string, string | undefined>> = process.env,
+  ) {
+    this.workerEnabled = environment.REPORT_WORKER_ENABLED?.trim() === "true";
+  }
+
+  private readonly workerEnabled: boolean;
 
   async check(): Promise<ReportReadinessResult> {
     const checkedAt = validDate(this.clock.now());
     const [database, migrations, workerHeartbeat] = await Promise.all([
       this.databaseReady(),
       this.migrationsReady(),
-      this.workerReady(checkedAt),
+      this.workerEnabled ? this.workerReady(checkedAt) : Promise.resolve(true),
     ]);
-    const provider = this.config.provider.configured;
+    const provider = this.workerEnabled ? this.config.provider.configured : true;
     const checks = {
       database: state(database),
       migrations: state(migrations),
