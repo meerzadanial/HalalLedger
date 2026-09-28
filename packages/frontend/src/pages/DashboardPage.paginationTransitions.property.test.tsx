@@ -47,7 +47,9 @@ const totals: IncomeTotals = {
   totalDigitalIncome: 12,
 };
 
-type NavigationAction = { kind: 'next' | 'previous' };
+type NavigationAction =
+  | { kind: 'next' }
+  | { kind: 'previous' };
 type FilterAction =
   | { kind: 'apply-status'; value: 'halal' | 'non-halal' | 'both' }
   | { kind: 'apply-payment'; value: 'cash' | 'digital' | 'both' }
